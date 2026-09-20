@@ -9,6 +9,7 @@ const {
 
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 
 // ============================================================
 // 🍥 NARUTO UZUMAKI
@@ -17,6 +18,24 @@ const path = require("path");
 
 const PREFIX = "m.";
 const DATA_FILE = path.join(__dirname, "data.json");
+
+// ============================================================
+// 🌐 SERVIDOR HTTP PARA RENDER
+// ============================================================
+
+const PORT = process.env.PORT || 3000;
+
+const httpServer = http.createServer((req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/plain; charset=utf-8"
+  });
+
+  res.end("🍥 Naruto Uzumaki está conectado correctamente.");
+});
+
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`🌐 Servidor HTTP iniciado en el puerto ${PORT}`);
+});
 
 // ============================================================
 // 🤖 CLIENTE
@@ -114,7 +133,6 @@ function getUser(userId) {
 
   const user = db.users[userId];
 
-  // Compatibilidad con datos antiguos
   if (typeof user.money !== "number") user.money = 100;
   if (typeof user.bank !== "number") user.bank = 0;
   if (typeof user.xp !== "number") user.xp = 0;
@@ -183,7 +201,6 @@ function getGuild(guildId) {
 
   const guild = db.guilds[guildId];
 
-  // Compatibilidad con data.json anterior
   if (!guild.antiraid) {
     guild.antiraid = {
       enabled: false,
@@ -369,10 +386,7 @@ client.on(Events.GuildMemberAdd, async member => {
   try {
     const settings = getGuild(member.guild.id);
 
-    // ========================================================
-    // 🎭 AUTOROLE
-    // ========================================================
-
+    // AUTOROLE
     if (
       settings.autorole.enabled &&
       settings.autorole.role
@@ -390,10 +404,7 @@ client.on(Events.GuildMemberAdd, async member => {
       }
     }
 
-    // ========================================================
-    // 👋 BIENVENIDA
-    // ========================================================
-
+    // BIENVENIDA
     if (
       settings.welcome.enabled &&
       settings.welcome.channel
@@ -412,10 +423,7 @@ client.on(Events.GuildMemberAdd, async member => {
       }
     }
 
-    // ========================================================
-    // 🚨 ANTI-RAID
-    // ========================================================
-
+    // ANTI-RAID
     if (!settings.antiraid.enabled) return;
 
     const now = Date.now();
@@ -527,7 +535,6 @@ client.on(Events.ChannelCreate, async channel => {
 
     if (!entry) return;
 
-    // Evitar borrar canales creados antes de este evento
     if (
       Date.now() - entry.createdTimestamp > 10000
     ) {
