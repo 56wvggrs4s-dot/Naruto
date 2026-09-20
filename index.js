@@ -1,10 +1,10 @@
-
 const {
   Client,
   GatewayIntentBits,
   Partials,
   PermissionsBitField,
-  EmbedBuilder
+  EmbedBuilder,
+  Events
 } = require("discord.js");
 
 const fs = require("fs");
@@ -38,7 +38,7 @@ const client = new Client({
 });
 
 // ============================================================
-// 💾 BASE DE DATOS JSON
+// 💾 BASE DE DATOS
 // ============================================================
 
 let db = {
@@ -48,7 +48,11 @@ let db = {
 
 function saveDB() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(db, null, 2),
+      "utf8"
+    );
   } catch (error) {
     console.error("❌ Error guardando datos:", error);
   }
@@ -56,11 +60,33 @@ function saveDB() {
 
 function loadDB() {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      db = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    if (!fs.existsSync(DATA_FILE)) {
+      saveDB();
+      return;
     }
+
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
+
+    if (!raw.trim()) {
+      saveDB();
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    db = {
+      users: parsed.users || {},
+      guilds: parsed.guilds || {}
+    };
   } catch (error) {
-    console.error("❌ Error cargando datos:", error);
+    console.error("❌ Error cargando data.json:", error);
+
+    db = {
+      users: {},
+      guilds: {}
+    };
+
+    saveDB();
   }
 }
 
@@ -82,64 +108,152 @@ function getUser(userId) {
       warnings: 0,
       daily: 0
     };
+
     saveDB();
   }
 
-  return db.users[userId];
+  const user = db.users[userId];
+
+  // Compatibilidad con datos antiguos
+  if (typeof user.money !== "number") user.money = 100;
+  if (typeof user.bank !== "number") user.bank = 0;
+  if (typeof user.xp !== "number") user.xp = 0;
+  if (typeof user.level !== "number") user.level = 1;
+  if (typeof user.bio !== "string") user.bio = "Sin biografía.";
+  if (typeof user.reps !== "number") user.reps = 0;
+  if (typeof user.warnings !== "number") user.warnings = 0;
+  if (typeof user.daily !== "number") user.daily = 0;
+
+  return user;
 }
 
 // ============================================================
 // 🏠 SERVIDORES
 // ============================================================
 
+function createGuildSettings() {
+  return {
+    logsChannel: null,
+
+    antiraid: {
+      enabled: false,
+      limit: 5,
+      seconds: 10,
+      action: "kick"
+    },
+
+    antilink: {
+      enabled: false,
+      whitelist: [
+        "discord.com",
+        "discord.gg"
+      ]
+    },
+
+    antispam: {
+      enabled: false,
+      maxMessages: 5,
+      interval: 5000,
+      timeout: 60000
+    },
+
+    channelProtection: {
+      enabled: false,
+      whitelistUsers: [],
+      whitelistRoles: []
+    },
+
+    welcome: {
+      enabled: false,
+      channel: null
+    },
+
+    autorole: {
+      enabled: false,
+      role: null
+    }
+  };
+}
+
 function getGuild(guildId) {
   if (!db.guilds[guildId]) {
-    db.guilds[guildId] = {
-      logsChannel: null,
-
-      antiraid: {
-        enabled: false,
-        limit: 5,
-        seconds: 10,
-        action: "kick"
-      },
-
-      antilink: {
-        enabled: false,
-        whitelist: [
-          "discord.com",
-          "discord.gg"
-        ]
-      },
-
-      antispam: {
-        enabled: false,
-        maxMessages: 5,
-        interval: 5000,
-        timeout: 60000
-      },
-
-      channelProtection: {
-        enabled: false,
-        whitelistUsers: [],
-        whitelistRoles: []
-      },
-
-      welcome: {
-        enabled: false,
-        channel: null
-      },
-
-      autorole: {
-        enabled: false,
-        role: null
-      }
-    };
-
+    db.guilds[guildId] = createGuildSettings();
     saveDB();
   }
 
-  return db.guilds[guildId];
+  const guild = db.guilds[guildId];
+
+  // Compatibilidad con data.json anterior
+  if (!guild.antiraid) {
+    guild.antiraid = {
+      enabled: false,
+      limit: 5,
+      seconds: 10,
+      action: "kick"
+    };
+  }
+
+  if (!guild.antilink) {
+    guild.antilink = {
+      enabled: false,
+      whitelist: [
+        "discord.com",
+        "discord.gg"
+      ]
+    };
+  }
+
+  if (!Array.isArray(guild.antilink.whitelist)) {
+    guild.antilink.whitelist = [
+      "discord.com",
+      "discord.gg"
+    ];
+  }
+
+  if (!guild.antispam) {
+    guild.antispam = {
+      enabled: false,
+      maxMessages: 5,
+      interval: 5000,
+      timeout: 60000
+    };
+  }
+
+  if (!guild.channelProtection) {
+    guild.channelProtection = {
+      enabled: false,
+      whitelistUsers: [],
+      whitelistRoles: []
+    };
+  }
+
+  if (!Array.isArray(guild.channelProtection.whitelistUsers)) {
+    guild.channelProtection.whitelistUsers = [];
+  }
+
+  if (!Array.isArray(guild.channelProtection.whitelistRoles)) {
+    guild.channelProtection.whitelistRoles = [];
+  }
+
+  if (!guild.welcome) {
+    guild.welcome = {
+      enabled: false,
+      channel: null
+    };
+  }
+
+  if (!guild.autorole) {
+    guild.autorole = {
+      enabled: false,
+      role: null
+    };
+  }
+
+  if (!("logsChannel" in guild)) {
+    guild.logsChannel = null;
+  }
+
+  return guild;
 }
 
 // ============================================================
@@ -147,18 +261,22 @@ function getGuild(guildId) {
 // ============================================================
 
 async function sendLog(guild, embed) {
-  const settings = getGuild(guild.id);
-
-  if (!settings.logsChannel) return;
-
-  const channel = guild.channels.cache.get(settings.logsChannel);
-
-  if (!channel) return;
-
   try {
-    await channel.send({ embeds: [embed] });
+    const settings = getGuild(guild.id);
+
+    if (!settings.logsChannel) return;
+
+    const channel = guild.channels.cache.get(
+      settings.logsChannel
+    );
+
+    if (!channel) return;
+
+    await channel.send({
+      embeds: [embed]
+    });
   } catch (error) {
-    console.error("❌ No pude enviar logs:", error);
+    console.error("❌ Error enviando log:", error);
   }
 }
 
@@ -167,23 +285,17 @@ async function sendLog(guild, embed) {
 // ============================================================
 
 function isAdmin(member) {
+  if (!member) return false;
+
   return member.permissions.has(
     PermissionsBitField.Flags.Administrator
   );
 }
 
 function isOwner(member) {
-  return member.guild.ownerId === member.id;
-}
+  if (!member) return false;
 
-function hasStaffPermission(member) {
-  return member.permissions.has(
-    PermissionsBitField.Flags.ManageGuild
-  ) ||
-  member.permissions.has(
-    PermissionsBitField.Flags.ManageChannels
-  ) ||
-  isAdmin(member);
+  return member.guild.ownerId === member.id;
 }
 
 // ============================================================
@@ -204,123 +316,188 @@ const moderationCommands = [
 ];
 
 // ============================================================
-// 🚀 READY
+// 🚀 BOT READY
 // ============================================================
 
-client.once("ready", () => {
+client.once(Events.ClientReady, readyClient => {
+  console.log("");
   console.log("======================================");
   console.log("🍥 NARUTO UZUMAKI");
   console.log("======================================");
-  console.log(`🤖 ${client.user.tag}`);
-  console.log(`🏠 Servidores: ${client.guilds.cache.size}`);
+  console.log(`🤖 Usuario: ${readyClient.user.tag}`);
+  console.log(`🆔 ID: ${readyClient.user.id}`);
+  console.log(`🏠 Servidores: ${readyClient.guilds.cache.size}`);
   console.log(`🔑 Prefix: ${PREFIX}`);
-  console.log("✅ Bot conectado correctamente.");
+  console.log(`📡 Ping: ${readyClient.ws.ping}ms`);
+  console.log("🟢 NARUTO UZUMAKI ESTÁ CONECTADO.");
+  console.log("✅ Bot iniciado correctamente.");
   console.log("======================================");
+  console.log("");
 
-  client.user.setActivity(`${PREFIX}help | Naruto Uzumaki`);
+  readyClient.user.setActivity(
+    `${PREFIX}help | Naruto Uzumaki`
+  );
 });
 
 // ============================================================
-// 👋 BIENVENIDAS
+// ❌ ERRORES DEL CLIENTE
 // ============================================================
 
-client.on("guildMemberAdd", async member => {
-  const settings = getGuild(member.guild.id);
+client.on(Events.Error, error => {
+  console.error("❌ Discord Client Error:", error);
+});
 
-  // AUTOROL
-  if (
-    settings.autorole.enabled &&
-    settings.autorole.role
-  ) {
-    const role = member.guild.roles.cache.get(
+client.on(Events.Warn, warning => {
+  console.warn("⚠️ Discord Warning:", warning);
+});
+
+process.on("unhandledRejection", error => {
+  console.error("❌ Unhandled Rejection:", error);
+});
+
+process.on("uncaughtException", error => {
+  console.error("❌ Uncaught Exception:", error);
+});
+
+// ============================================================
+// 👋 BIENVENIDAS + AUTOROLE + ANTI-RAID
+// ============================================================
+
+const joinTracker = new Map();
+
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    const settings = getGuild(member.guild.id);
+
+    // ========================================================
+    // 🎭 AUTOROLE
+    // ========================================================
+
+    if (
+      settings.autorole.enabled &&
       settings.autorole.role
-    );
+    ) {
+      const role = member.guild.roles.cache.get(
+        settings.autorole.role
+      );
 
-    if (role) {
-      await member.roles.add(role).catch(() => {});
+      if (
+        role &&
+        role.editable &&
+        !member.roles.cache.has(role.id)
+      ) {
+        await member.roles.add(role).catch(() => {});
+      }
     }
-  }
 
-  // BIENVENIDA
-  if (
-    settings.welcome.enabled &&
-    settings.welcome.channel
-  ) {
-    const channel = member.guild.channels.cache.get(
+    // ========================================================
+    // 👋 BIENVENIDA
+    // ========================================================
+
+    if (
+      settings.welcome.enabled &&
       settings.welcome.channel
-    );
+    ) {
+      const channel = member.guild.channels.cache.get(
+        settings.welcome.channel
+      );
 
-    if (channel) {
-      channel.send(
-        `🍥 ¡Bienvenido/a ${member} a **${member.guild.name}**!`
-      ).catch(() => {});
+      if (
+        channel &&
+        channel.isTextBased()
+      ) {
+        await channel.send(
+          `🍥 ¡Bienvenido/a ${member} a **${member.guild.name}**!`
+        ).catch(() => {});
+      }
     }
-  }
 
-  // ========================================================
-  // 🚨 ANTI-RAID
-  // ========================================================
+    // ========================================================
+    // 🚨 ANTI-RAID
+    // ========================================================
 
-  if (settings.antiraid.enabled) {
+    if (!settings.antiraid.enabled) return;
+
     const now = Date.now();
 
-    if (!client.joinTracker) {
-      client.joinTracker = {};
+    if (!joinTracker.has(member.guild.id)) {
+      joinTracker.set(member.guild.id, []);
     }
 
-    if (!client.joinTracker[member.guild.id]) {
-      client.joinTracker[member.guild.id] = [];
-    }
+    const joins = joinTracker.get(member.guild.id);
 
-    client.joinTracker[member.guild.id].push({
+    joins.push({
       id: member.id,
       time: now
     });
 
-    client.joinTracker[member.guild.id] =
-      client.joinTracker[member.guild.id].filter(
-        x =>
-          now - x.time <=
-          settings.antiraid.seconds * 1000
-      );
+    const validJoins = joins.filter(
+      join =>
+        now - join.time <=
+        settings.antiraid.seconds * 1000
+    );
 
-    const joins =
-      client.joinTracker[member.guild.id];
+    joinTracker.set(
+      member.guild.id,
+      validJoins
+    );
 
     if (
-      joins.length >=
+      validJoins.length <
       settings.antiraid.limit
     ) {
-      const embed = new EmbedBuilder()
-        .setTitle("🚨 ANTI-RAID ACTIVADO")
-        .setDescription(
-          `Se detectaron **${joins.length} entradas** en pocos segundos.`
-        )
-        .addFields(
-          {
-            name: "Servidor",
-            value: member.guild.name
-          },
-          {
-            name: "Acción",
-            value: settings.antiraid.action
-          }
-        )
-        .setTimestamp();
+      return;
+    }
 
-      await sendLog(member.guild, embed);
+    const embed = new EmbedBuilder()
+      .setTitle("🚨 ANTI-RAID ACTIVADO")
+      .setDescription(
+        `Se detectaron **${validJoins.length} entradas** en **${settings.antiraid.seconds} segundos**.`
+      )
+      .addFields(
+        {
+          name: "Servidor",
+          value: member.guild.name,
+          inline: true
+        },
+        {
+          name: "Límite",
+          value: String(settings.antiraid.limit),
+          inline: true
+        },
+        {
+          name: "Acción",
+          value: settings.antiraid.action,
+          inline: true
+        }
+      )
+      .setTimestamp();
 
-      if (settings.antiraid.action === "kick") {
-        for (const join of joins) {
-          const user =
-            member.guild.members.cache.get(join.id);
+    await sendLog(member.guild, embed);
 
-          if (user && !isOwner(user)) {
-            await user.kick("Anti-Raid").catch(() => {});
-          }
+    if (settings.antiraid.action === "kick") {
+      for (const join of validJoins) {
+        const user =
+          member.guild.members.cache.get(join.id);
+
+        if (
+          user &&
+          !isOwner(user) &&
+          user.kickable
+        ) {
+          await user.kick(
+            "Anti-Raid de Naruto Uzumaki"
+          ).catch(() => {});
         }
       }
     }
+
+    joinTracker.set(member.guild.id, []);
+  } catch (error) {
+    console.error(
+      "❌ Error en GuildMemberAdd:",
+      error
+    );
   }
 });
 
@@ -328,14 +505,17 @@ client.on("guildMemberAdd", async member => {
 // 🔒 PROTECCIÓN DE CREACIÓN DE CANALES
 // ============================================================
 
-client.on("channelCreate", async channel => {
-  if (!channel.guild) return;
-
-  const settings = getGuild(channel.guild.id);
-
-  if (!settings.channelProtection.enabled) return;
-
+client.on(Events.ChannelCreate, async channel => {
   try {
+    if (!channel.guild) return;
+
+    const settings =
+      getGuild(channel.guild.id);
+
+    if (!settings.channelProtection.enabled) {
+      return;
+    }
+
     const audit =
       await channel.guild.fetchAuditLogs({
         type: 10,
@@ -346,6 +526,13 @@ client.on("channelCreate", async channel => {
       audit.entries.first();
 
     if (!entry) return;
+
+    // Evitar borrar canales creados antes de este evento
+    if (
+      Date.now() - entry.createdTimestamp > 10000
+    ) {
+      return;
+    }
 
     const executor = entry.executor;
 
@@ -359,49 +546,53 @@ client.on("channelCreate", async channel => {
     }
 
     const member =
-      channel.guild.members.cache.get(
-        executor.id
-      );
+      await channel.guild.members
+        .fetch(executor.id)
+        .catch(() => null);
 
     if (!member) return;
 
     const allowedUser =
-      settings.channelProtection
-        .whitelistUsers
+      settings.channelProtection.whitelistUsers
         .includes(executor.id);
 
     const allowedRole =
       member.roles.cache.some(role =>
-        settings.channelProtection
-          .whitelistRoles
+        settings.channelProtection.whitelistRoles
           .includes(role.id)
       );
 
     if (allowedUser || allowedRole) return;
 
-    await channel.delete(
-      "Creación de canal no autorizada"
-    ).catch(() => {});
+    if (channel.deletable) {
+      await channel.delete(
+        "Creación de canal no autorizada"
+      ).catch(() => {});
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("🔒 CREACIÓN DE CANAL BLOQUEADA")
       .setDescription(
-        `Un miembro no autorizado intentó crear un canal.`
+        "Un miembro no autorizado intentó crear un canal."
       )
       .addFields(
         {
           name: "Usuario",
-          value: `<@${executor.id}>`
+          value: `<@${executor.id}>`,
+          inline: true
         },
         {
           name: "Canal",
-          value: channel.name
+          value: `#${channel.name}`,
+          inline: true
         }
       )
       .setTimestamp();
 
-    await sendLog(channel.guild, embed);
-
+    await sendLog(
+      channel.guild,
+      embed
+    );
   } catch (error) {
     console.error(
       "❌ Error Anti-Channel:",
@@ -416,68 +607,75 @@ client.on("channelCreate", async channel => {
 
 const spamTracker = new Map();
 
-client.on("messageCreate", async message => {
-  if (!message.guild) return;
-  if (message.author.bot) return;
+client.on(Events.MessageCreate, async message => {
+  try {
+    if (!message.guild) return;
+    if (message.author.bot) return;
 
-  const settings =
-    getGuild(message.guild.id);
+    const settings =
+      getGuild(message.guild.id);
 
-  if (!settings.antispam.enabled) return;
+    if (!settings.antispam.enabled) return;
 
-  if (
-    isAdmin(message.member)
-  ) return;
+    if (isAdmin(message.member)) return;
 
-  const key =
-    `${message.guild.id}-${message.author.id}`;
+    const key =
+      `${message.guild.id}-${message.author.id}`;
 
-  const now = Date.now();
+    const now = Date.now();
 
-  if (!spamTracker.has(key)) {
-    spamTracker.set(key, []);
-  }
+    if (!spamTracker.has(key)) {
+      spamTracker.set(key, []);
+    }
 
-  const messages =
-    spamTracker.get(key);
+    const messages =
+      spamTracker.get(key);
 
-  messages.push(now);
+    messages.push(now);
 
-  while (
-    messages.length &&
-    now - messages[0] >
+    while (
+      messages.length &&
+      now - messages[0] >
       settings.antispam.interval
-  ) {
-    messages.shift();
-  }
+    ) {
+      messages.shift();
+    }
 
-  if (
-    messages.length >=
-    settings.antispam.maxMessages
-  ) {
-    messages.length = 0;
+    if (
+      messages.length >=
+      settings.antispam.maxMessages
+    ) {
+      messages.length = 0;
 
-    await message.delete().catch(() => {});
+      await message.delete().catch(() => {});
 
-    await message.member.timeout(
-      settings.antispam.timeout,
-      "Anti-Spam"
-    ).catch(() => {});
+      if (message.member.moderatable) {
+        await message.member.timeout(
+          settings.antispam.timeout,
+          "Anti-Spam de Naruto Uzumaki"
+        ).catch(() => {});
+      }
 
-    const embed = new EmbedBuilder()
-      .setTitle("💬 ANTI-SPAM")
-      .setDescription(
-        `${message.author} fue detectado enviando spam.`
-      )
-      .addFields({
-        name: "Acción",
-        value: "Timeout automático"
-      })
-      .setTimestamp();
+      const embed = new EmbedBuilder()
+        .setTitle("💬 ANTI-SPAM")
+        .setDescription(
+          `${message.author} fue detectado enviando spam.`
+        )
+        .addFields({
+          name: "Acción",
+          value: "Timeout automático"
+        })
+        .setTimestamp();
 
-    await sendLog(
-      message.guild,
-      embed
+      await sendLog(
+        message.guild,
+        embed
+      );
+    }
+  } catch (error) {
+    console.error(
+      "❌ Error Anti-Spam:",
+      error
     );
   }
 });
@@ -486,66 +684,70 @@ client.on("messageCreate", async message => {
 // 🔗 ANTI-LINK
 // ============================================================
 
-client.on("messageCreate", async message => {
-  if (!message.guild) return;
-  if (message.author.bot) return;
+client.on(Events.MessageCreate, async message => {
+  try {
+    if (!message.guild) return;
+    if (message.author.bot) return;
 
-  const settings =
-    getGuild(message.guild.id);
+    const settings =
+      getGuild(message.guild.id);
 
-  if (!settings.antilink.enabled) return;
+    if (!settings.antilink.enabled) return;
 
-  if (
-    isAdmin(message.member)
-  ) return;
+    if (isAdmin(message.member)) return;
 
-  const urlRegex =
-    /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    const urlRegex =
+      /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
 
-  if (!urlRegex.test(message.content)) return;
+    if (!urlRegex.test(message.content)) return;
 
-  let allowed = false;
+    const lowerContent =
+      message.content.toLowerCase();
 
-  for (
-    const domain
-    of settings.antilink.whitelist
-  ) {
-    if (
-      message.content
-        .toLowerCase()
-        .includes(domain.toLowerCase())
-    ) {
-      allowed = true;
-      break;
-    }
+    const allowed =
+      settings.antilink.whitelist.some(
+        domain =>
+          lowerContent.includes(
+            domain.toLowerCase()
+          )
+      );
+
+    if (allowed) return;
+
+    await message.delete().catch(() => {});
+
+    await message.author.send(
+      `🔗 Tu enlace fue eliminado en **${message.guild.name}** porque los enlaces externos están bloqueados.`
+    ).catch(() => {});
+
+    const embed = new EmbedBuilder()
+      .setTitle("🔗 ANTI-LINK")
+      .setDescription(
+        `${message.author} envió un enlace no permitido.`
+      )
+      .addFields({
+        name: "Canal",
+        value: `<#${message.channel.id}>`
+      })
+      .setTimestamp();
+
+    await sendLog(
+      message.guild,
+      embed
+    );
+  } catch (error) {
+    console.error(
+      "❌ Error Anti-Link:",
+      error
+    );
   }
-
-  if (allowed) return;
-
-  await message.delete().catch(() => {});
-
-  await message.author.send(
-    `🔗 Tu enlace fue eliminado en **${message.guild.name}** porque los enlaces externos están bloqueados.`
-  ).catch(() => {});
-
-  const embed = new EmbedBuilder()
-    .setTitle("🔗 ANTI-LINK")
-    .setDescription(
-      `${message.author} envió un enlace no permitido.`
-    )
-    .setTimestamp();
-
-  await sendLog(
-    message.guild,
-    embed
-  );
 });
 
 // ============================================================
 // 💬 COMANDOS
 // ============================================================
 
-client.on("messageCreate", async message => {
+client.on(Events.MessageCreate, async message => {
   try {
     if (!message.guild) return;
     if (message.author.bot) return;
@@ -576,7 +778,32 @@ client.on("messageCreate", async message => {
       getGuild(message.guild.id);
 
     // ========================================================
-    // 🏓 1. PING
+    // XP
+    // ========================================================
+
+    function addXP() {
+      const amount =
+        Math.floor(Math.random() * 10) + 5;
+
+      user.xp += amount;
+
+      const needed =
+        user.level * 100;
+
+      if (user.xp >= needed) {
+        user.xp -= needed;
+        user.level++;
+
+        message.channel.send(
+          `🎉 ${message.author} subió al **nivel ${user.level}**.`
+        ).catch(() => {});
+      }
+
+      saveDB();
+    }
+
+    // ========================================================
+    // 🏓 PING
     // ========================================================
 
     if (command === "ping") {
@@ -586,7 +813,7 @@ client.on("messageCreate", async message => {
     }
 
     // ========================================================
-    // 🆘 2. HELP
+    // 🆘 HELP
     // ========================================================
 
     if (command === "help") {
@@ -669,9 +896,7 @@ client.on("messageCreate", async message => {
 \`${PREFIX}logs\`
 \`${PREFIX}welcome\`
 \`${PREFIX}autorole\`
-\`${PREFIX}setchannel\`
 \`${PREFIX}settings\`
-\`${PREFIX}prefix\`
 \`${PREFIX}antilink\`
 \`${PREFIX}antispam\`
 \`${PREFIX}antiraid\`
@@ -683,20 +908,29 @@ client.on("messageCreate", async message => {
     // 💰 ECONOMÍA
     // ========================================================
 
-    if (command === "balance" || command === "money") {
+    if (
+      command === "balance" ||
+      command === "money"
+    ) {
+      addXP();
+
       return message.reply(
         `💰 **${message.author.username}**\n\n` +
-        `💵 Efectivo: **${user.money}**\n` +
-        `🏦 Banco: **${user.bank}**\n` +
-        `💎 Total: **${user.money + user.bank}**`
+        `💵 Efectivo: **$${user.money}**\n` +
+        `🏦 Banco: **$${user.bank}**\n` +
+        `💎 Total: **$${user.money + user.bank}**`
       );
     }
 
     if (command === "daily") {
       const now = Date.now();
-      const cooldown = 24 * 60 * 60 * 1000;
+      const cooldown =
+        24 * 60 * 60 * 1000;
 
-      if (now - user.daily < cooldown) {
+      if (
+        now - user.daily <
+        cooldown
+      ) {
         const remaining =
           cooldown -
           (now - user.daily);
@@ -714,7 +948,7 @@ client.on("messageCreate", async message => {
       user.money += 500;
       user.daily = now;
 
-      saveDB();
+      addXP();
 
       return message.reply(
         "🎁 Recibiste **$500** de recompensa diaria."
@@ -731,13 +965,11 @@ client.on("messageCreate", async message => {
       ];
 
       const amount =
-        Math.floor(
-          Math.random() * 201
-        ) + 100;
+        Math.floor(Math.random() * 201) + 100;
 
       user.money += amount;
 
-      saveDB();
+      addXP();
 
       return message.reply(
         `${jobs[Math.floor(Math.random() * jobs.length)]}\n` +
@@ -752,13 +984,20 @@ client.on("messageCreate", async message => {
       const amount =
         parseInt(args[1]);
 
-      if (!target || !amount || amount <= 0) {
+      if (
+        !target ||
+        !amount ||
+        amount <= 0
+      ) {
         return message.reply(
           `❌ Usa: \`${PREFIX}pay @usuario cantidad\``
         );
       }
 
-      if (target.id === message.author.id) {
+      if (
+        target.id ===
+        message.author.id
+      ) {
         return message.reply(
           "❌ No puedes enviarte dinero a ti mismo."
         );
@@ -776,7 +1015,7 @@ client.on("messageCreate", async message => {
       user.money -= amount;
       targetUser.money += amount;
 
-      saveDB();
+      addXP();
 
       return message.reply(
         `💸 Enviaste **$${amount}** a ${target}.`
@@ -785,7 +1024,7 @@ client.on("messageCreate", async message => {
 
     if (command === "deposit") {
       const amount =
-        args[0] === "all"
+        args[0]?.toLowerCase() === "all"
           ? user.money
           : parseInt(args[0]);
 
@@ -804,7 +1043,7 @@ client.on("messageCreate", async message => {
       user.money -= amount;
       user.bank += amount;
 
-      saveDB();
+      addXP();
 
       return message.reply(
         `🏦 Depositaste **$${amount}**.`
@@ -813,7 +1052,7 @@ client.on("messageCreate", async message => {
 
     if (command === "withdraw") {
       const amount =
-        args[0] === "all"
+        args[0]?.toLowerCase() === "all"
           ? user.bank
           : parseInt(args[0]);
 
@@ -832,7 +1071,7 @@ client.on("messageCreate", async message => {
       user.bank -= amount;
       user.money += amount;
 
-      saveDB();
+      addXP();
 
       return message.reply(
         `🏦 Retiraste **$${amount}**.`
@@ -874,31 +1113,6 @@ client.on("messageCreate", async message => {
     // ========================================================
     // 🏆 XP / RANK
     // ========================================================
-
-    function addXP() {
-      const amount =
-        Math.floor(
-          Math.random() * 10
-        ) + 5;
-
-      user.xp += amount;
-
-      const needed =
-        user.level * 100;
-
-      if (user.xp >= needed) {
-        user.xp -= needed;
-        user.level++;
-
-        message.channel.send(
-          `🎉 ${message.author} subió al **nivel ${user.level}**.`
-        ).catch(() => {});
-      }
-
-      saveDB();
-    }
-
-    addXP();
 
     if (
       command === "rank" ||
@@ -967,7 +1181,9 @@ client.on("messageCreate", async message => {
       );
     }
 
+    // ========================================================
     // ADMIN XP
+    // ========================================================
 
     if (
       command === "addxp" ||
@@ -985,7 +1201,11 @@ client.on("messageCreate", async message => {
       const amount =
         parseInt(args[1]);
 
-      if (!target || !amount) {
+      if (
+        !target ||
+        !amount ||
+        amount <= 0
+      ) {
         return message.reply(
           `❌ Usa: \`${PREFIX}${command} @usuario cantidad\``
         );
@@ -1077,7 +1297,6 @@ client.on("messageCreate", async message => {
       }
 
       user.bio = bio;
-
       saveDB();
 
       return message.reply(
@@ -1095,7 +1314,10 @@ client.on("messageCreate", async message => {
         );
       }
 
-      if (target.id === message.author.id) {
+      if (
+        target.id ===
+        message.author.id
+      ) {
         return message.reply(
           "❌ No puedes darte reputación a ti mismo."
         );
@@ -1143,7 +1365,10 @@ client.on("messageCreate", async message => {
     // ℹ️ INFO
     // ========================================================
 
-    if (command === "serverinfo" || command === "info") {
+    if (
+      command === "serverinfo" ||
+      command === "info"
+    ) {
       return message.reply(
         `🏠 **${message.guild.name}**\n\n` +
         `👑 Owner: <@${message.guild.ownerId}>\n` +
@@ -1162,7 +1387,7 @@ client.on("messageCreate", async message => {
         `👤 **${target.user.username}**\n\n` +
         `🆔 ID: **${target.id}**\n` +
         `📅 Cuenta: <t:${Math.floor(target.user.createdTimestamp / 1000)}:R>\n` +
-        `🎭 Roles: **${target.roles.cache.size - 1}**`
+        `🎭 Roles: **${Math.max(0, target.roles.cache.size - 1)}**`
       );
     }
 
@@ -1180,7 +1405,8 @@ client.on("messageCreate", async message => {
       return message.reply(
         message.guild.iconURL({
           size: 1024
-        }) || "❌ El servidor no tiene icono."
+        }) ||
+        "❌ El servidor no tiene icono."
       );
     }
 
@@ -1254,6 +1480,14 @@ client.on("messageCreate", async message => {
         );
       }
 
+      if (
+        target.id === message.author.id
+      ) {
+        return message.reply(
+          "❌ No puedes expulsarte a ti mismo."
+        );
+      }
+
       if (!target.kickable) {
         return message.reply(
           "❌ No puedo expulsar a ese usuario."
@@ -1276,6 +1510,14 @@ client.on("messageCreate", async message => {
       if (!target) {
         return message.reply(
           `❌ Usa: \`${PREFIX}ban @usuario\``
+        );
+      }
+
+      if (
+        target.id === message.author.id
+      ) {
+        return message.reply(
+          "❌ No puedes banearte a ti mismo."
         );
       }
 
@@ -1320,7 +1562,11 @@ client.on("messageCreate", async message => {
       const minutes =
         parseInt(args[1]);
 
-      if (!target || !minutes) {
+      if (
+        !target ||
+        !minutes ||
+        minutes <= 0
+      ) {
         return message.reply(
           `❌ Usa: \`${PREFIX}timeout @usuario minutos\``
         );
@@ -1373,13 +1619,14 @@ client.on("messageCreate", async message => {
         );
       }
 
-      await message.channel.bulkDelete(
-        amount,
-        true
-      );
+      const deleted =
+        await message.channel.bulkDelete(
+          amount,
+          true
+        );
 
       return message.channel.send(
-        `🧹 Se eliminaron **${amount} mensajes**.`
+        `🧹 Se eliminaron **${deleted.size} mensajes**.`
       );
     }
 
@@ -1460,7 +1707,13 @@ client.on("messageCreate", async message => {
       ];
 
       return message.reply(
-        `🎱 ${answers[Math.floor(Math.random() * answers.length)]}`
+        `🎱 ${
+          answers[
+            Math.floor(
+              Math.random() * answers.length
+            )
+          ]
+        }`
       );
     }
 
@@ -1480,12 +1733,38 @@ client.on("messageCreate", async message => {
         "tijera"
       ];
 
+      const player =
+        args[0]?.toLowerCase();
+
+      if (!choices.includes(player)) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}rps piedra\`, \`${PREFIX}rps papel\` o \`${PREFIX}rps tijera\``
+        );
+      }
+
       const bot =
-        choices[Math.floor(Math.random() * 3)];
+        choices[
+          Math.floor(
+            Math.random() * choices.length
+          )
+        ];
+
+      let result = "🤝 Empate.";
+
+      if (
+        (player === "piedra" && bot === "tijera") ||
+        (player === "papel" && bot === "piedra") ||
+        (player === "tijera" && bot === "papel")
+      ) {
+        result = "🎉 ¡Ganaste!";
+      } else if (player !== bot) {
+        result = "😢 Ganó Naruto.";
+      }
 
       return message.reply(
-        `✊✋✌️ Tú: **${args[0] || "?"}**\n` +
-        `🤖 Naruto: **${bot}**`
+        `✊ Tú: **${player}**\n` +
+        `🤖 Naruto: **${bot}**\n\n` +
+        result
       );
     }
 
@@ -1497,15 +1776,19 @@ client.on("messageCreate", async message => {
       ];
 
       return message.reply(
-        jokes[Math.floor(Math.random() * jokes.length)]
+        jokes[
+          Math.floor(
+            Math.random() * jokes.length
+          )
+        ]
       );
     }
 
     if (command === "ship") {
-      const a =
+      const target =
         message.mentions.users.first();
 
-      if (!a) {
+      if (!target) {
         return message.reply(
           `❌ Usa: \`${PREFIX}ship @usuario\``
         );
@@ -1527,7 +1810,11 @@ client.on("messageCreate", async message => {
       }
 
       const choice =
-        args[Math.floor(Math.random() * args.length)];
+        args[
+          Math.floor(
+            Math.random() * args.length
+          )
+        ];
 
       return message.reply(
         `🤔 Elijo: **${choice}**`
@@ -1537,6 +1824,12 @@ client.on("messageCreate", async message => {
     if (command === "reverse") {
       const text =
         args.join(" ");
+
+      if (!text) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}reverse texto\``
+        );
+      }
 
       return message.reply(
         text.split("").reverse().join("")
@@ -1560,6 +1853,12 @@ client.on("messageCreate", async message => {
     if (command === "random") {
       const max =
         parseInt(args[0]) || 100;
+
+      if (max < 1) {
+        return message.reply(
+          "❌ El número máximo debe ser mayor que 0."
+        );
+      }
 
       const number =
         Math.floor(
@@ -1597,7 +1896,10 @@ client.on("messageCreate", async message => {
         );
       }
 
-      if (args[0] === "set") {
+      const option =
+        args[0]?.toLowerCase();
+
+      if (option === "set") {
         const channel =
           message.mentions.channels.first();
 
@@ -1617,7 +1919,7 @@ client.on("messageCreate", async message => {
         );
       }
 
-      if (args[0] === "disable") {
+      if (option === "disable") {
         guild.logsChannel = null;
 
         saveDB();
@@ -1627,7 +1929,13 @@ client.on("messageCreate", async message => {
         );
       }
 
-      if (args[0] === "test") {
+      if (option === "test") {
+        if (!guild.logsChannel) {
+          return message.reply(
+            "❌ Primero configura un canal de logs."
+          );
+        }
+
         await sendLog(
           message.guild,
           new EmbedBuilder()
@@ -1663,11 +1971,11 @@ client.on("messageCreate", async message => {
         );
       }
 
-      const option = args[0];
+      const option =
+        args[0]?.toLowerCase();
 
       if (option === "on") {
         guild.antiraid.enabled = true;
-
         saveDB();
 
         return message.reply(
@@ -1677,7 +1985,6 @@ client.on("messageCreate", async message => {
 
       if (option === "off") {
         guild.antiraid.enabled = false;
-
         saveDB();
 
         return message.reply(
@@ -1729,9 +2036,7 @@ client.on("messageCreate", async message => {
         const action =
           args[1]?.toLowerCase();
 
-        if (
-          !["kick"].includes(action)
-        ) {
+        if (action !== "kick") {
           return message.reply(
             "❌ Acción disponible: kick"
           );
@@ -1784,7 +2089,6 @@ client.on("messageCreate", async message => {
 
       if (option === "on") {
         guild.antilink.enabled = true;
-
         saveDB();
 
         return message.reply(
@@ -1794,7 +2098,6 @@ client.on("messageCreate", async message => {
 
       if (option === "off") {
         guild.antilink.enabled = false;
-
         saveDB();
 
         return message.reply(
@@ -1804,7 +2107,7 @@ client.on("messageCreate", async message => {
 
       if (option === "whitelist") {
         const domain =
-          args[1];
+          args[1]?.toLowerCase();
 
         if (!domain) {
           return message.reply(
@@ -1831,11 +2134,18 @@ client.on("messageCreate", async message => {
 
       if (option === "remove") {
         const domain =
-          args[1];
+          args[1]?.toLowerCase();
+
+        if (!domain) {
+          return message.reply(
+            `❌ Usa: \`${PREFIX}antilink remove dominio.com\``
+          );
+        }
 
         guild.antilink.whitelist =
           guild.antilink.whitelist.filter(
-            x => x !== domain
+            x =>
+              x.toLowerCase() !== domain
           );
 
         saveDB();
@@ -1879,7 +2189,6 @@ client.on("messageCreate", async message => {
 
       if (option === "on") {
         guild.antispam.enabled = true;
-
         saveDB();
 
         return message.reply(
@@ -1889,7 +2198,6 @@ client.on("messageCreate", async message => {
 
       if (option === "off") {
         guild.antispam.enabled = false;
-
         saveDB();
 
         return message.reply(
@@ -1901,9 +2209,9 @@ client.on("messageCreate", async message => {
         const amount =
           parseInt(args[1]);
 
-        if (!amount) {
+        if (!amount || amount < 2) {
           return message.reply(
-            "❌ Cantidad inválida."
+            `❌ Usa: \`${PREFIX}antispam limit 5\``
           );
         }
 
@@ -1940,9 +2248,7 @@ client.on("messageCreate", async message => {
     // 🔒 PROTECCIÓN DE CANALES
     // ========================================================
 
-    if (
-      command === "channelprotect"
-    ) {
+    if (command === "channelprotect") {
       if (!isAdmin(message.member)) {
         return message.reply(
           "❌ Solo administradores."
@@ -1953,9 +2259,7 @@ client.on("messageCreate", async message => {
         args[0]?.toLowerCase();
 
       if (option === "on") {
-        guild.channelProtection.enabled =
-          true;
-
+        guild.channelProtection.enabled = true;
         saveDB();
 
         return message.reply(
@@ -1964,9 +2268,7 @@ client.on("messageCreate", async message => {
       }
 
       if (option === "off") {
-        guild.channelProtection.enabled =
-          false;
-
+        guild.channelProtection.enabled = false;
         saveDB();
 
         return message.reply(
@@ -1985,13 +2287,12 @@ client.on("messageCreate", async message => {
         }
 
         if (
-          !guild.channelProtection
-            .whitelistUsers
+          !guild.channelProtection.whitelistUsers
             .includes(target.id)
         ) {
-          guild.channelProtection
-            .whitelistUsers
-            .push(target.id);
+          guild.channelProtection.whitelistUsers.push(
+            target.id
+          );
         }
 
         saveDB();
@@ -2012,13 +2313,12 @@ client.on("messageCreate", async message => {
         }
 
         if (
-          !guild.channelProtection
-            .whitelistRoles
+          !guild.channelProtection.whitelistRoles
             .includes(role.id)
         ) {
-          guild.channelProtection
-            .whitelistRoles
-            .push(role.id);
+          guild.channelProtection.whitelistRoles.push(
+            role.id
+          );
         }
 
         saveDB();
@@ -2060,7 +2360,6 @@ client.on("messageCreate", async message => {
 
       if (args[0] === "on") {
         guild.welcome.enabled = true;
-
         saveDB();
 
         return message.reply(
@@ -2070,7 +2369,6 @@ client.on("messageCreate", async message => {
 
       if (args[0] === "off") {
         guild.welcome.enabled = false;
-
         saveDB();
 
         return message.reply(
@@ -2119,7 +2417,6 @@ client.on("messageCreate", async message => {
 
       if (args[0] === "on") {
         guild.autorole.enabled = true;
-
         saveDB();
 
         return message.reply(
@@ -2129,7 +2426,6 @@ client.on("messageCreate", async message => {
 
       if (args[0] === "off") {
         guild.autorole.enabled = false;
-
         saveDB();
 
         return message.reply(
@@ -2169,11 +2465,7 @@ client.on("messageCreate", async message => {
     // ⚙️ SETTINGS
     // ========================================================
 
-    if (
-      command === "settings" ||
-      command === "setchannel" ||
-      command === "prefix"
-    ) {
+    if (command === "settings") {
       if (!isAdmin(message.member)) {
         return message.reply(
           "❌ Solo administradores."
@@ -2220,13 +2512,96 @@ client.on("messageCreate", async message => {
       );
     }
 
+    // ========================================================
+    // ❓ COMANDO DESCONOCIDO
+    // ========================================================
+
+    const knownCommands = [
+      "ping",
+      "help",
+      "balance",
+      "money",
+      "daily",
+      "work",
+      "pay",
+      "deposit",
+      "withdraw",
+      "bank",
+      "richest",
+      "economy",
+      "rank",
+      "rankcard",
+      "level",
+      "xp",
+      "leaderboard",
+      "top",
+      "rewards",
+      "levels",
+      "addxp",
+      "removexp",
+      "profile",
+      "avatar",
+      "banner",
+      "bio",
+      "setbio",
+      "rep",
+      "reps",
+      "friends",
+      "status",
+      "social",
+      "serverinfo",
+      "info",
+      "userinfo",
+      "botinfo",
+      "servericon",
+      "roleinfo",
+      "channelinfo",
+      "rolelist",
+      "membercount",
+      "invite",
+      "kick",
+      "ban",
+      "unban",
+      "timeout",
+      "untimeout",
+      "clear",
+      "warn",
+      "warnings",
+      "lock",
+      "unlock",
+      "8ball",
+      "dice",
+      "rps",
+      "joke",
+      "ship",
+      "choose",
+      "reverse",
+      "say",
+      "random",
+      "hug",
+      "logs",
+      "antiraid",
+      "antilink",
+      "antispam",
+      "channelprotect",
+      "welcome",
+      "autorole",
+      "settings"
+    ];
+
+    if (!knownCommands.includes(command)) {
+      return message.reply(
+        `❌ Comando desconocido. Usa \`${PREFIX}help\` para ver los comandos.`
+      );
+    }
+
   } catch (error) {
     console.error(
       "❌ Error ejecutando comando:",
       error
     );
 
-    message.reply(
+    await message.reply(
       "❌ Ocurrió un error ejecutando el comando."
     ).catch(() => {});
   }
@@ -2238,11 +2613,16 @@ client.on("messageCreate", async message => {
 
 if (!process.env.DISCORD_TOKEN) {
   console.error(
-    "❌ Falta la variable DISCORD_TOKEN."
+    "❌ FALTA LA VARIABLE DISCORD_TOKEN EN RENDER."
   );
   process.exit(1);
 }
 
+console.log("🔄 Conectando Naruto Uzumaki a Discord...");
+
 client.login(
   process.env.DISCORD_TOKEN
-);
+).catch(error => {
+  console.error("❌ ERROR AL INICIAR SESIÓN EN DISCORD:");
+  console.error(error);
+});
