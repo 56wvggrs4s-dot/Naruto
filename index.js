@@ -13,7 +13,7 @@ const http = require("http");
 
 // ============================================================
 // 🍥 NARUTO UZUMAKI
-// Prefix: m.
+// PREFIX: m.
 // ============================================================
 
 const PREFIX = "m.";
@@ -48,6 +48,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ],
+
   partials: [
     Partials.Channel,
     Partials.Message,
@@ -189,6 +190,14 @@ function createGuildSettings() {
     autorole: {
       enabled: false,
       role: null
+    },
+
+    // ========================================================
+    // 🛒 TIENDA
+    // ========================================================
+
+    shop: {
+      roles: {}
     }
   };
 }
@@ -270,6 +279,17 @@ function getGuild(guildId) {
     guild.logsChannel = null;
   }
 
+  // Compatibilidad con servidores antiguos
+  if (!guild.shop) {
+    guild.shop = {
+      roles: {}
+    };
+  }
+
+  if (!guild.shop.roles) {
+    guild.shop.roles = {};
+  }
+
   return guild;
 }
 
@@ -316,13 +336,15 @@ function isOwner(member) {
 }
 
 // ============================================================
-// 🛡️ COMANDOS DE MODERACIÓN
+// 🛡️ MODERACIÓN
 // ============================================================
 
 const moderationCommands = [
-  "kick",
   "ban",
+  "mute",
+  "kick",
   "unban",
+  "unmute",
   "timeout",
   "untimeout",
   "clear",
@@ -333,7 +355,129 @@ const moderationCommands = [
 ];
 
 // ============================================================
-// 🚀 BOT READY
+// 📚 LISTAS PARA HELP
+// ============================================================
+
+const publicHelp = {
+  economia: [
+    "balance",
+    "daily",
+    "work",
+    "pay",
+    "deposit",
+    "withdraw",
+    "bank",
+    "richest",
+    "money",
+    "economy"
+  ],
+
+  rank: [
+    "rank",
+    "level",
+    "xp",
+    "leaderboard",
+    "top",
+    "rankcard",
+    "rewards",
+    "levels"
+  ],
+
+  social: [
+    "profile",
+    "avatar",
+    "banner",
+    "bio",
+    "setbio",
+    "rep",
+    "reps",
+    "friends",
+    "status",
+    "social"
+  ],
+
+  servidor: [
+    "serverinfo",
+    "userinfo",
+    "botinfo",
+    "servericon",
+    "roleinfo",
+    "channelinfo",
+    "rolelist",
+    "membercount",
+    "invite",
+    "members"
+  ],
+
+  diversion: [
+    "8ball",
+    "dice",
+    "rps",
+    "joke",
+    "choose",
+    "reverse",
+    "say",
+    "random",
+    "hug",
+    "ship"
+  ],
+
+  tienda: [
+    "tienda",
+    "comprar"
+  ]
+};
+
+const adminHelp = {
+  moderacion: [
+    "ban",
+    "mute",
+    "kick",
+    "unban",
+    "unmute",
+    "timeout",
+    "untimeout",
+    "clear",
+    "warn",
+    "warnings",
+    "lock",
+    "unlock"
+  ],
+
+  servidor: [
+    "logs",
+    "welcome",
+    "autorole",
+    "settings",
+    "antilink",
+    "antispam",
+    "antiraid",
+    "channelprotect"
+  ],
+
+  roles: [
+    "roles",
+    "roleinfo",
+    "rolelist"
+  ],
+
+  tienda: [
+    "tienda",
+    "tienda agregar",
+    "tienda quitar",
+    "tienda precio",
+    "tienda editar",
+    "tienda lista"
+  ],
+
+  economia: [
+    "addxp",
+    "removexp"
+  ]
+};
+
+// ============================================================
+// 🚀 READY
 // ============================================================
 
 client.once(Events.ClientReady, readyClient => {
@@ -347,7 +491,6 @@ client.once(Events.ClientReady, readyClient => {
   console.log(`🔑 Prefix: ${PREFIX}`);
   console.log(`📡 Ping: ${readyClient.ws.ping}ms`);
   console.log("🟢 NARUTO UZUMAKI ESTÁ CONECTADO.");
-  console.log("✅ Bot iniciado correctamente.");
   console.log("======================================");
   console.log("");
 
@@ -357,7 +500,7 @@ client.once(Events.ClientReady, readyClient => {
 });
 
 // ============================================================
-// ❌ ERRORES DEL CLIENTE
+// ❌ ERRORES
 // ============================================================
 
 client.on(Events.Error, error => {
@@ -377,7 +520,7 @@ process.on("uncaughtException", error => {
 });
 
 // ============================================================
-// 👋 BIENVENIDAS + AUTOROLE + ANTI-RAID
+// 👋 BIENVENIDA + AUTOROLE + ANTIRAID
 // ============================================================
 
 const joinTracker = new Map();
@@ -386,7 +529,6 @@ client.on(Events.GuildMemberAdd, async member => {
   try {
     const settings = getGuild(member.guild.id);
 
-    // AUTOROLE
     if (
       settings.autorole.enabled &&
       settings.autorole.role
@@ -404,7 +546,6 @@ client.on(Events.GuildMemberAdd, async member => {
       }
     }
 
-    // BIENVENIDA
     if (
       settings.welcome.enabled &&
       settings.welcome.channel
@@ -413,17 +554,13 @@ client.on(Events.GuildMemberAdd, async member => {
         settings.welcome.channel
       );
 
-      if (
-        channel &&
-        channel.isTextBased()
-      ) {
+      if (channel && channel.isTextBased()) {
         await channel.send(
           `🍥 ¡Bienvenido/a ${member} a **${member.guild.name}**!`
         ).catch(() => {});
       }
     }
 
-    // ANTI-RAID
     if (!settings.antiraid.enabled) return;
 
     const now = Date.now();
@@ -502,15 +639,12 @@ client.on(Events.GuildMemberAdd, async member => {
 
     joinTracker.set(member.guild.id, []);
   } catch (error) {
-    console.error(
-      "❌ Error en GuildMemberAdd:",
-      error
-    );
+    console.error("❌ Error GuildMemberAdd:", error);
   }
 });
 
 // ============================================================
-// 🔒 PROTECCIÓN DE CREACIÓN DE CANALES
+// 🔒 PROTECCIÓN DE CANALES
 // ============================================================
 
 client.on(Events.ChannelCreate, async channel => {
@@ -530,8 +664,7 @@ client.on(Events.ChannelCreate, async channel => {
         limit: 1
       });
 
-    const entry =
-      audit.entries.first();
+    const entry = audit.entries.first();
 
     if (!entry) return;
 
@@ -596,15 +729,9 @@ client.on(Events.ChannelCreate, async channel => {
       )
       .setTimestamp();
 
-    await sendLog(
-      channel.guild,
-      embed
-    );
+    await sendLog(channel.guild, embed);
   } catch (error) {
-    console.error(
-      "❌ Error Anti-Channel:",
-      error
-    );
+    console.error("❌ Error Anti-Channel:", error);
   }
 });
 
@@ -623,7 +750,6 @@ client.on(Events.MessageCreate, async message => {
       getGuild(message.guild.id);
 
     if (!settings.antispam.enabled) return;
-
     if (isAdmin(message.member)) return;
 
     const key =
@@ -663,27 +789,22 @@ client.on(Events.MessageCreate, async message => {
         ).catch(() => {});
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle("💬 ANTI-SPAM")
-        .setDescription(
-          `${message.author} fue detectado enviando spam.`
-        )
-        .addFields({
-          name: "Acción",
-          value: "Timeout automático"
-        })
-        .setTimestamp();
-
       await sendLog(
         message.guild,
-        embed
+        new EmbedBuilder()
+          .setTitle("💬 ANTI-SPAM")
+          .setDescription(
+            `${message.author} fue detectado enviando spam.`
+          )
+          .addFields({
+            name: "Acción",
+            value: "Timeout automático"
+          })
+          .setTimestamp()
       );
     }
   } catch (error) {
-    console.error(
-      "❌ Error Anti-Spam:",
-      error
-    );
+    console.error("❌ Error Anti-Spam:", error);
   }
 });
 
@@ -700,7 +821,6 @@ client.on(Events.MessageCreate, async message => {
       getGuild(message.guild.id);
 
     if (!settings.antilink.enabled) return;
-
     if (isAdmin(message.member)) return;
 
     const urlRegex =
@@ -723,10 +843,6 @@ client.on(Events.MessageCreate, async message => {
 
     await message.delete().catch(() => {});
 
-    await message.author.send(
-      `🔗 Tu enlace fue eliminado en **${message.guild.name}** porque los enlaces externos están bloqueados.`
-    ).catch(() => {});
-
     const embed = new EmbedBuilder()
       .setTitle("🔗 ANTI-LINK")
       .setDescription(
@@ -743,10 +859,7 @@ client.on(Events.MessageCreate, async message => {
       embed
     );
   } catch (error) {
-    console.error(
-      "❌ Error Anti-Link:",
-      error
-    );
+    console.error("❌ Error Anti-Link:", error);
   }
 });
 
@@ -785,7 +898,7 @@ client.on(Events.MessageCreate, async message => {
       getGuild(message.guild.id);
 
     // ========================================================
-    // XP
+    // ⭐ XP
     // ========================================================
 
     function addXP() {
@@ -820,95 +933,77 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ========================================================
-    // 🆘 HELP
+    // 🆘 HELP PÚBLICO
     // ========================================================
 
     if (command === "help") {
-      return message.reply(
-`🍥 **NARUTO UZUMAKI — COMANDOS**
+      const text = `
+🍥 **NARUTO UZUMAKI — AYUDA**
+
+━━━━━━━━━━━━━━━━━━━━
 
 💰 **ECONOMÍA**
-\`${PREFIX}balance\`
-\`${PREFIX}daily\`
-\`${PREFIX}work\`
-\`${PREFIX}pay\`
-\`${PREFIX}deposit\`
-\`${PREFIX}withdraw\`
-\`${PREFIX}bank\`
-\`${PREFIX}richest\`
-\`${PREFIX}money\`
-\`${PREFIX}economy\`
+${publicHelp.economia.map(x => `\`${PREFIX}${x}\``).join("\n")}
 
 🏆 **RANK**
-\`${PREFIX}rank\`
-\`${PREFIX}level\`
-\`${PREFIX}xp\`
-\`${PREFIX}leaderboard\`
-\`${PREFIX}top\`
-\`${PREFIX}rankcard\`
-\`${PREFIX}rewards\`
-\`${PREFIX}levels\`
-\`${PREFIX}addxp\`
-\`${PREFIX}removexp\`
+${publicHelp.rank.map(x => `\`${PREFIX}${x}\``).join("\n")}
 
 👤 **SOCIAL**
-\`${PREFIX}profile\`
-\`${PREFIX}avatar\`
-\`${PREFIX}banner\`
-\`${PREFIX}bio\`
-\`${PREFIX}setbio\`
-\`${PREFIX}rep\`
-\`${PREFIX}reps\`
-\`${PREFIX}friends\`
-\`${PREFIX}status\`
-\`${PREFIX}social\`
+${publicHelp.social.map(x => `\`${PREFIX}${x}\``).join("\n")}
 
-ℹ️ **INFO**
-\`${PREFIX}serverinfo\`
-\`${PREFIX}userinfo\`
-\`${PREFIX}botinfo\`
-\`${PREFIX}servericon\`
-\`${PREFIX}roleinfo\`
-\`${PREFIX}channelinfo\`
-\`${PREFIX}rolelist\`
-\`${PREFIX}membercount\`
-\`${PREFIX}invite\`
-\`${PREFIX}info\`
-
-🛡️ **MODERACIÓN — ADMIN**
-\`${PREFIX}kick\`
-\`${PREFIX}ban\`
-\`${PREFIX}unban\`
-\`${PREFIX}timeout\`
-\`${PREFIX}untimeout\`
-\`${PREFIX}clear\`
-\`${PREFIX}warn\`
-\`${PREFIX}warnings\`
-\`${PREFIX}lock\`
-\`${PREFIX}unlock\`
+🏠 **SERVIDOR**
+${publicHelp.servidor.map(x => `\`${PREFIX}${x}\``).join("\n")}
 
 🎮 **DIVERSIÓN**
-\`${PREFIX}8ball\`
-\`${PREFIX}dice\`
-\`${PREFIX}rps\`
-\`${PREFIX}joke\`
-\`${PREFIX}ship\`
-\`${PREFIX}choose\`
-\`${PREFIX}reverse\`
-\`${PREFIX}say\`
-\`${PREFIX}random\`
-\`${PREFIX}hug\`
+${publicHelp.diversion.map(x => `\`${PREFIX}${x}\``).join("\n")}
 
-⚙️ **CONFIGURACIÓN**
-\`${PREFIX}logs\`
-\`${PREFIX}welcome\`
-\`${PREFIX}autorole\`
-\`${PREFIX}settings\`
-\`${PREFIX}antilink\`
-\`${PREFIX}antispam\`
-\`${PREFIX}antiraid\`
-\`${PREFIX}channelprotect\``
-      );
+🛒 **TIENDA**
+${publicHelp.tienda.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🔐 Los comandos administrativos están en:
+\`${PREFIX}helpadmin\`
+`;
+
+      return message.reply(text);
+    }
+
+    // ========================================================
+    // 🔐 HELP ADMIN
+    // ========================================================
+
+    if (command === "helpadmin") {
+      if (!isAdmin(message.member)) {
+        return message.reply(
+          "❌ Solo los administradores pueden usar este comando."
+        );
+      }
+
+      const text = `
+🔐 **NARUTO UZUMAKI — PANEL ADMIN**
+
+━━━━━━━━━━━━━━━━━━━━
+
+🛡️ **MODERACIÓN**
+${adminHelp.moderacion.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+🏠 **SERVIDOR**
+${adminHelp.servidor.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+🎭 **ROLES**
+${adminHelp.roles.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+🛒 **TIENDA**
+${adminHelp.tienda.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+💰 **ECONOMÍA**
+${adminHelp.economia.map(x => `\`${PREFIX}${x}\``).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━
+`;
+
+      return message.reply(text);
     }
 
     // ========================================================
@@ -931,21 +1026,14 @@ client.on(Events.MessageCreate, async message => {
 
     if (command === "daily") {
       const now = Date.now();
-      const cooldown =
-        24 * 60 * 60 * 1000;
+      const cooldown = 24 * 60 * 60 * 1000;
 
-      if (
-        now - user.daily <
-        cooldown
-      ) {
+      if (now - user.daily < cooldown) {
         const remaining =
-          cooldown -
-          (now - user.daily);
+          cooldown - (now - user.daily);
 
         const hours =
-          Math.ceil(
-            remaining / 3600000
-          );
+          Math.ceil(remaining / 3600000);
 
         return message.reply(
           `⏰ Ya reclamaste tu recompensa. Vuelve en **${hours}h**.`
@@ -1001,10 +1089,7 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (
-        target.id ===
-        message.author.id
-      ) {
+      if (target.id === message.author.id) {
         return message.reply(
           "❌ No puedes enviarte dinero a ti mismo."
         );
@@ -1104,8 +1189,7 @@ client.on(Events.MessageCreate, async message => {
           )
           .slice(0, 10);
 
-      let text =
-        "💰 **TOP ECONOMÍA**\n\n";
+      let text = "💰 **TOP ECONOMÍA**\n\n";
 
       richest.forEach(
         ([id, data], index) => {
@@ -1118,7 +1202,7 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ========================================================
-    // 🏆 XP / RANK
+    // 🏆 RANK
     // ========================================================
 
     if (
@@ -1157,8 +1241,7 @@ client.on(Events.MessageCreate, async message => {
           )
           .slice(0, 10);
 
-      let text =
-        "🏆 **TOP RANK**\n\n";
+      let text = "🏆 **TOP RANK**\n\n";
 
       top.forEach(
         ([id, data], index) => {
@@ -1182,14 +1265,14 @@ client.on(Events.MessageCreate, async message => {
 
     if (command === "levels") {
       return message.reply(
-        `🏆 Cada nivel requiere más XP.\n\n` +
+        `🏆 Cada nivel requiere XP.\n\n` +
         `Nivel actual: **${user.level}**\n` +
         `XP: **${user.xp}/${user.level * 100}**`
       );
     }
 
     // ========================================================
-    // ADMIN XP
+    // 💰 ADMIN XP
     // ========================================================
 
     if (
@@ -1304,6 +1387,7 @@ client.on(Events.MessageCreate, async message => {
       }
 
       user.bio = bio;
+
       saveDB();
 
       return message.reply(
@@ -1321,10 +1405,7 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (
-        target.id ===
-        message.author.id
-      ) {
+      if (target.id === message.author.id) {
         return message.reply(
           "❌ No puedes darte reputación a ti mismo."
         );
@@ -1369,7 +1450,7 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ========================================================
-    // ℹ️ INFO
+    // 🏠 SERVIDOR
     // ========================================================
 
     if (
@@ -1382,6 +1463,15 @@ client.on(Events.MessageCreate, async message => {
         `👥 Miembros: **${message.guild.memberCount}**\n` +
         `💬 Canales: **${message.guild.channels.cache.size}**\n` +
         `🎭 Roles: **${message.guild.roles.cache.size}**`
+      );
+    }
+
+    if (command === "members") {
+      return message.reply(
+        `👥 **MIEMBROS**\n\n` +
+        `Total: **${message.guild.memberCount}**\n` +
+        `Humanos: **${message.guild.members.cache.filter(m => !m.user.bot).size}**\n` +
+        `Bots: **${message.guild.members.cache.filter(m => m.user.bot).size}**`
       );
     }
 
@@ -1434,13 +1524,6 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
-    if (command === "channelinfo") {
-      return message.reply(
-        `💬 **${message.channel.name}**\n` +
-        `🆔 ${message.channel.id}`
-      );
-    }
-
     if (command === "rolelist") {
       const roles =
         message.guild.roles.cache
@@ -1449,6 +1532,13 @@ client.on(Events.MessageCreate, async message => {
 
       return message.reply(
         `🎭 **ROLES**\n\n${roles.join("\n")}`
+      );
+    }
+
+    if (command === "channelinfo") {
+      return message.reply(
+        `💬 **${message.channel.name}**\n` +
+        `🆔 ${message.channel.id}`
       );
     }
 
@@ -1465,6 +1555,305 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ========================================================
+    // 🛒 TIENDA PÚBLICA
+    // ========================================================
+
+    if (command === "tienda" && args[0] !== "agregar" &&
+        args[0] !== "quitar" &&
+        args[0] !== "precio" &&
+        args[0] !== "editar" &&
+        args[0] !== "lista") {
+
+      const roles = Object.entries(guild.shop.roles);
+
+      if (!roles.length) {
+        return message.reply(
+          "🛒 **TIENDA**\n\nNo hay roles disponibles actualmente."
+        );
+      }
+
+      let text =
+        "🛒 **TIENDA DE NARUTO**\n\n";
+
+      roles.forEach(([roleId, data], index) => {
+        const role =
+          message.guild.roles.cache.get(roleId);
+
+        if (!role) return;
+
+        text +=
+          `**${index + 1}.** ${role}\n` +
+          `💰 Precio: **$${data.price}**\n\n`;
+      });
+
+      text +=
+        `\n💵 Dinero disponible: **$${user.money}**\n` +
+        `\n🛍️ Para comprar: \`${PREFIX}comprar @rol\``;
+
+      return message.reply(text);
+    }
+
+    // ========================================================
+    // 🛍️ COMPRAR ROL
+    // ========================================================
+
+    if (command === "comprar") {
+      const role =
+        message.mentions.roles.first();
+
+      if (!role) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}comprar @rol\``
+        );
+      }
+
+      const product =
+        guild.shop.roles[role.id];
+
+      if (!product) {
+        return message.reply(
+          "❌ Ese rol no está disponible en la tienda."
+        );
+      }
+
+      if (message.member.roles.cache.has(role.id)) {
+        return message.reply(
+          "❌ Ya tienes ese rol."
+        );
+      }
+
+      if (user.money < product.price) {
+        return message.reply(
+          `❌ No tienes suficiente dinero.\n` +
+          `💰 Tienes: **$${user.money}**\n` +
+          `🏷️ Precio: **$${product.price}**`
+        );
+      }
+
+      if (!role.editable) {
+        return message.reply(
+          "❌ Naruto no puede asignar ese rol. El rol está por encima del rol del bot."
+        );
+      }
+
+      user.money -= product.price;
+
+      await message.member.roles.add(
+        role,
+        `Compra en tienda por ${message.author.tag}`
+      );
+
+      saveDB();
+
+      return message.reply(
+        `🛍️ ¡Compra realizada!\n\n` +
+        `🎭 Rol: ${role}\n` +
+        `💰 Pagaste: **$${product.price}**\n` +
+        `💵 Dinero restante: **$${user.money}**`
+      );
+    }
+
+    // ========================================================
+    // 🔐 TIENDA ADMIN
+    // ========================================================
+
+    if (
+      command === "tienda" &&
+      [
+        "agregar",
+        "quitar",
+        "precio",
+        "editar",
+        "lista"
+      ].includes(args[0]?.toLowerCase())
+    ) {
+      if (!isAdmin(message.member)) {
+        return message.reply(
+          "❌ Solo los administradores pueden modificar la tienda."
+        );
+      }
+
+      const action =
+        args[0].toLowerCase();
+
+      // --------------------------------------------------------
+      // LISTA
+      // --------------------------------------------------------
+
+      if (action === "lista") {
+        const products =
+          Object.entries(guild.shop.roles);
+
+        if (!products.length) {
+          return message.reply(
+            "🛒 La tienda está vacía."
+          );
+        }
+
+        let text =
+          "🛒 **PRODUCTOS DE LA TIENDA**\n\n";
+
+        products.forEach(([roleId, data], index) => {
+          const role =
+            message.guild.roles.cache.get(roleId);
+
+          text +=
+            `**${index + 1}.** ${role || `Rol eliminado (${roleId})`}\n` +
+            `💰 Precio: **$${data.price}**\n\n`;
+        });
+
+        return message.reply(text);
+      }
+
+      // --------------------------------------------------------
+      // AGREGAR
+      // --------------------------------------------------------
+
+      if (action === "agregar") {
+        const role =
+          message.mentions.roles.first();
+
+        const price =
+          parseInt(
+            args.find(x => /^\d+$/.test(x))
+          );
+
+        if (!role || !price || price <= 0) {
+          return message.reply(
+            `❌ Usa: \`${PREFIX}tienda agregar @Rol 5000\``
+          );
+        }
+
+        if (guild.shop.roles[role.id]) {
+          return message.reply(
+            "❌ Ese rol ya está en la tienda."
+          );
+        }
+
+        if (!role.editable) {
+          return message.reply(
+            "❌ Naruto no puede asignar ese rol."
+          );
+        }
+
+        guild.shop.roles[role.id] = {
+          price,
+          createdAt: Date.now()
+        };
+
+        saveDB();
+
+        return message.reply(
+          `✅ Rol añadido a la tienda.\n\n` +
+          `🎭 Rol: ${role}\n` +
+          `💰 Precio: **$${price}**`
+        );
+      }
+
+      // --------------------------------------------------------
+      // QUITAR
+      // --------------------------------------------------------
+
+      if (action === "quitar") {
+        const role =
+          message.mentions.roles.first();
+
+        if (!role) {
+          return message.reply(
+            `❌ Usa: \`${PREFIX}tienda quitar @Rol\``
+          );
+        }
+
+        if (!guild.shop.roles[role.id]) {
+          return message.reply(
+            "❌ Ese rol no está en la tienda."
+          );
+        }
+
+        delete guild.shop.roles[role.id];
+
+        saveDB();
+
+        return message.reply(
+          `🗑️ ${role} fue eliminado de la tienda.`
+        );
+      }
+
+      // --------------------------------------------------------
+      // PRECIO
+      // --------------------------------------------------------
+
+      if (action === "precio") {
+        const role =
+          message.mentions.roles.first();
+
+        const price =
+          parseInt(
+            args.find(x => /^\d+$/.test(x))
+          );
+
+        if (!role || !price || price <= 0) {
+          return message.reply(
+            `❌ Usa: \`${PREFIX}tienda precio @Rol 7500\``
+          );
+        }
+
+        if (!guild.shop.roles[role.id]) {
+          return message.reply(
+            "❌ Ese rol no está en la tienda."
+          );
+        }
+
+        guild.shop.roles[role.id].price =
+          price;
+
+        saveDB();
+
+        return message.reply(
+          `💰 Precio actualizado.\n` +
+          `${role} → **$${price}**`
+        );
+      }
+
+      // --------------------------------------------------------
+      // EDITAR
+      // --------------------------------------------------------
+
+      if (action === "editar") {
+        const role =
+          message.mentions.roles.first();
+
+        const price =
+          parseInt(
+            args.find(x => /^\d+$/.test(x))
+          );
+
+        if (!role || !price || price <= 0) {
+          return message.reply(
+            `❌ Usa: \`${PREFIX}tienda editar @Rol 10000\``
+          );
+        }
+
+        if (!guild.shop.roles[role.id]) {
+          return message.reply(
+            "❌ Ese rol no está en la tienda."
+          );
+        }
+
+        guild.shop.roles[role.id].price =
+          price;
+
+        saveDB();
+
+        return message.reply(
+          `✏️ Producto editado.\n\n` +
+          `🎭 Rol: ${role}\n` +
+          `💰 Nuevo precio: **$${price}**`
+        );
+      }
+    }
+
+    // ========================================================
     // 🛡️ MODERACIÓN
     // ========================================================
 
@@ -1477,39 +1866,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
-    if (command === "kick") {
-      const target =
-        message.mentions.members.first();
-
-      if (!target) {
-        return message.reply(
-          `❌ Usa: \`${PREFIX}kick @usuario\``
-        );
-      }
-
-      if (
-        target.id === message.author.id
-      ) {
-        return message.reply(
-          "❌ No puedes expulsarte a ti mismo."
-        );
-      }
-
-      if (!target.kickable) {
-        return message.reply(
-          "❌ No puedo expulsar a ese usuario."
-        );
-      }
-
-      await target.kick(
-        `Kick por ${message.author.tag}`
-      );
-
-      return message.reply(
-        `👢 ${target.user.tag} fue expulsado.`
-      );
-    }
-
+    // BAN
     if (command === "ban") {
       const target =
         message.mentions.members.first();
@@ -1520,9 +1877,7 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (
-        target.id === message.author.id
-      ) {
+      if (target.id === message.author.id) {
         return message.reply(
           "❌ No puedes banearte a ti mismo."
         );
@@ -1544,6 +1899,63 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // MUTE
+    if (command === "mute") {
+      const target =
+        message.mentions.members.first();
+
+      const minutes =
+        parseInt(args[1]) || 10;
+
+      if (!target) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}mute @usuario minutos\``
+        );
+      }
+
+      if (!target.moderatable) {
+        return message.reply(
+          "❌ No puedo silenciar a ese usuario."
+        );
+      }
+
+      await target.timeout(
+        minutes * 60000,
+        `Mute por ${message.author.tag}`
+      );
+
+      return message.reply(
+        `🔇 ${target.user.tag} fue muteado durante **${minutes} minutos**.`
+      );
+    }
+
+    // KICK
+    if (command === "kick") {
+      const target =
+        message.mentions.members.first();
+
+      if (!target) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}kick @usuario\``
+        );
+      }
+
+      if (!target.kickable) {
+        return message.reply(
+          "❌ No puedo expulsar a ese usuario."
+        );
+      }
+
+      await target.kick(
+        `Kick por ${message.author.tag}`
+      );
+
+      return message.reply(
+        `👢 ${target.user.tag} fue expulsado.`
+      );
+    }
+
+    // UNBAN
     if (command === "unban") {
       const userId = args[0];
 
@@ -1562,6 +1974,25 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // UNMUTE
+    if (command === "unmute") {
+      const target =
+        message.mentions.members.first();
+
+      if (!target) {
+        return message.reply(
+          `❌ Usa: \`${PREFIX}unmute @usuario\``
+        );
+      }
+
+      await target.timeout(null);
+
+      return message.reply(
+        `🔊 Mute eliminado de ${target}.`
+      );
+    }
+
+    // TIMEOUT
     if (command === "timeout") {
       const target =
         message.mentions.members.first();
@@ -1595,6 +2026,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // UNTIMEOUT
     if (command === "untimeout") {
       const target =
         message.mentions.members.first();
@@ -1612,6 +2044,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // CLEAR
     if (command === "clear") {
       const amount =
         parseInt(args[0]);
@@ -1637,6 +2070,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // WARN
     if (command === "warn") {
       const target =
         message.mentions.users.first();
@@ -1660,6 +2094,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // WARNINGS
     if (command === "warnings") {
       const target =
         message.mentions.users.first() ||
@@ -1673,6 +2108,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // LOCK
     if (command === "lock") {
       await message.channel.permissionOverwrites.edit(
         message.guild.roles.everyone,
@@ -1686,6 +2122,7 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
+    // UNLOCK
     if (command === "unlock") {
       await message.channel.permissionOverwrites.edit(
         message.guild.roles.everyone,
@@ -1893,16 +2330,30 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ========================================================
-    // ⚙️ CONFIGURACIÓN
+    // ⚙️ CONFIGURACIÓN ADMIN
     // ========================================================
 
-    if (command === "logs") {
+    if (
+      [
+        "logs",
+        "welcome",
+        "autorole",
+        "settings",
+        "antilink",
+        "antispam",
+        "antiraid",
+        "channelprotect"
+      ].includes(command)
+    ) {
       if (!isAdmin(message.member)) {
         return message.reply(
           "❌ Solo administradores."
         );
       }
+    }
 
+    // LOGS
+    if (command === "logs") {
       const option =
         args[0]?.toLowerCase();
 
@@ -1967,17 +2418,8 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
-    // ========================================================
-    // 🚨 ANTIRAID
-    // ========================================================
-
+    // ANTIRAID
     if (command === "antiraid") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       const option =
         args[0]?.toLowerCase();
 
@@ -2009,8 +2451,7 @@ client.on(Events.MessageCreate, async message => {
           );
         }
 
-        guild.antiraid.limit =
-          amount;
+        guild.antiraid.limit = amount;
 
         saveDB();
 
@@ -2029,8 +2470,7 @@ client.on(Events.MessageCreate, async message => {
           );
         }
 
-        guild.antiraid.seconds =
-          seconds;
+        guild.antiraid.seconds = seconds;
 
         saveDB();
 
@@ -2039,33 +2479,12 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (option === "action") {
-        const action =
-          args[1]?.toLowerCase();
-
-        if (action !== "kick") {
-          return message.reply(
-            "❌ Acción disponible: kick"
-          );
-        }
-
-        guild.antiraid.action =
-          action;
-
-        saveDB();
-
-        return message.reply(
-          `🚨 Acción Anti-Raid: **${action}**`
-        );
-      }
-
       if (option === "config") {
         return message.reply(
           `🚨 **ANTI-RAID**\n\n` +
           `Estado: **${guild.antiraid.enabled ? "ON" : "OFF"}**\n` +
           `Límite: **${guild.antiraid.limit}**\n` +
-          `Tiempo: **${guild.antiraid.seconds}s**\n` +
-          `Acción: **${guild.antiraid.action}**`
+          `Tiempo: **${guild.antiraid.seconds}s**`
         );
       }
 
@@ -2075,22 +2494,12 @@ client.on(Events.MessageCreate, async message => {
         `\`${PREFIX}antiraid off\`\n` +
         `\`${PREFIX}antiraid limit 5\`\n` +
         `\`${PREFIX}antiraid time 10\`\n` +
-        `\`${PREFIX}antiraid action kick\`\n` +
         `\`${PREFIX}antiraid config\``
       );
     }
 
-    // ========================================================
-    // 🔗 ANTILINK
-    // ========================================================
-
+    // ANTILINK
     if (command === "antilink") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       const option =
         args[0]?.toLowerCase();
 
@@ -2123,13 +2532,9 @@ client.on(Events.MessageCreate, async message => {
         }
 
         if (
-          !guild.antilink.whitelist.includes(
-            domain
-          )
+          !guild.antilink.whitelist.includes(domain)
         ) {
-          guild.antilink.whitelist.push(
-            domain
-          );
+          guild.antilink.whitelist.push(domain);
         }
 
         saveDB();
@@ -2158,15 +2563,7 @@ client.on(Events.MessageCreate, async message => {
         saveDB();
 
         return message.reply(
-          `✅ Dominio eliminado de la whitelist.`
-        );
-      }
-
-      if (option === "config") {
-        return message.reply(
-          `🔗 **ANTI-LINK**\n\n` +
-          `Estado: **${guild.antilink.enabled ? "ON" : "OFF"}**\n` +
-          `Whitelist: ${guild.antilink.whitelist.join(", ")}`
+          "✅ Dominio eliminado de la whitelist."
         );
       }
 
@@ -2175,22 +2572,12 @@ client.on(Events.MessageCreate, async message => {
         `\`${PREFIX}antilink on\`\n` +
         `\`${PREFIX}antilink off\`\n` +
         `\`${PREFIX}antilink whitelist discord.com\`\n` +
-        `\`${PREFIX}antilink remove discord.com\`\n` +
-        `\`${PREFIX}antilink config\``
+        `\`${PREFIX}antilink remove discord.com\``
       );
     }
 
-    // ========================================================
-    // 💬 ANTISPAM
-    // ========================================================
-
+    // ANTISPAM
     if (command === "antispam") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       const option =
         args[0]?.toLowerCase();
 
@@ -2232,36 +2619,16 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (option === "config") {
-        return message.reply(
-          `💬 **ANTI-SPAM**\n\n` +
-          `Estado: **${guild.antispam.enabled ? "ON" : "OFF"}**\n` +
-          `Mensajes: **${guild.antispam.maxMessages}**\n` +
-          `Intervalo: **${guild.antispam.interval / 1000}s**\n` +
-          `Timeout: **${guild.antispam.timeout / 1000}s**`
-        );
-      }
-
       return message.reply(
         `💬 Usa:\n` +
         `\`${PREFIX}antispam on\`\n` +
         `\`${PREFIX}antispam off\`\n` +
-        `\`${PREFIX}antispam limit 5\`\n` +
-        `\`${PREFIX}antispam config\``
+        `\`${PREFIX}antispam limit 5\``
       );
     }
 
-    // ========================================================
-    // 🔒 PROTECCIÓN DE CANALES
-    // ========================================================
-
+    // CHANNEL PROTECT
     if (command === "channelprotect") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       const option =
         args[0]?.toLowerCase();
 
@@ -2270,7 +2637,7 @@ client.on(Events.MessageCreate, async message => {
         saveDB();
 
         return message.reply(
-          "🔒 Protección de creación de canales activada."
+          "🔒 Protección de canales activada."
         );
       }
 
@@ -2335,36 +2702,17 @@ client.on(Events.MessageCreate, async message => {
         );
       }
 
-      if (option === "config") {
-        return message.reply(
-          `🔒 **PROTECCIÓN DE CANALES**\n\n` +
-          `Estado: **${guild.channelProtection.enabled ? "ON" : "OFF"}**\n` +
-          `Usuarios permitidos: **${guild.channelProtection.whitelistUsers.length}**\n` +
-          `Roles permitidos: **${guild.channelProtection.whitelistRoles.length}**`
-        );
-      }
-
       return message.reply(
         `🔒 Usa:\n` +
         `\`${PREFIX}channelprotect on\`\n` +
         `\`${PREFIX}channelprotect off\`\n` +
         `\`${PREFIX}channelprotect user @usuario\`\n` +
-        `\`${PREFIX}channelprotect role @rol\`\n` +
-        `\`${PREFIX}channelprotect config\``
+        `\`${PREFIX}channelprotect role @rol\``
       );
     }
 
-    // ========================================================
-    // 👋 WELCOME
-    // ========================================================
-
+    // WELCOME
     if (command === "welcome") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       if (args[0] === "on") {
         guild.welcome.enabled = true;
         saveDB();
@@ -2411,17 +2759,8 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
-    // ========================================================
-    // 🎭 AUTOROLE
-    // ========================================================
-
+    // AUTOROLE
     if (command === "autorole") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       if (args[0] === "on") {
         guild.autorole.enabled = true;
         saveDB();
@@ -2468,17 +2807,8 @@ client.on(Events.MessageCreate, async message => {
       );
     }
 
-    // ========================================================
-    // ⚙️ SETTINGS
-    // ========================================================
-
+    // SETTINGS
     if (command === "settings") {
-      if (!isAdmin(message.member)) {
-        return message.reply(
-          "❌ Solo administradores."
-        );
-      }
-
       return message.reply(
         `⚙️ **CONFIGURACIÓN DEL SERVIDOR**\n\n` +
         `📝 Logs: ${
@@ -2487,120 +2817,34 @@ client.on(Events.MessageCreate, async message => {
             : "No configurados"
         }\n` +
         `🚨 Anti-Raid: ${
-          guild.antiraid.enabled
-            ? "ON"
-            : "OFF"
+          guild.antiraid.enabled ? "ON" : "OFF"
         }\n` +
         `🔗 Anti-Link: ${
-          guild.antilink.enabled
-            ? "ON"
-            : "OFF"
+          guild.antilink.enabled ? "ON" : "OFF"
         }\n` +
         `💬 Anti-Spam: ${
-          guild.antispam.enabled
-            ? "ON"
-            : "OFF"
+          guild.antispam.enabled ? "ON" : "OFF"
         }\n` +
-        `🔒 Protección de canales: ${
-          guild.channelProtection.enabled
-            ? "ON"
-            : "OFF"
+        `🔒 Protección: ${
+          guild.channelProtection.enabled ? "ON" : "OFF"
         }\n` +
         `👋 Welcome: ${
-          guild.welcome.enabled
-            ? "ON"
-            : "OFF"
+          guild.welcome.enabled ? "ON" : "OFF"
         }\n` +
         `🎭 Autorole: ${
-          guild.autorole.enabled
-            ? "ON"
-            : "OFF"
-        }`
+          guild.autorole.enabled ? "ON" : "OFF"
+        }\n` +
+        `🛒 Productos: **${Object.keys(guild.shop.roles).length}**`
       );
     }
 
     // ========================================================
-    // ❓ COMANDO DESCONOCIDO
+    // ❓ DESCONOCIDO
     // ========================================================
 
-    const knownCommands = [
-      "ping",
-      "help",
-      "balance",
-      "money",
-      "daily",
-      "work",
-      "pay",
-      "deposit",
-      "withdraw",
-      "bank",
-      "richest",
-      "economy",
-      "rank",
-      "rankcard",
-      "level",
-      "xp",
-      "leaderboard",
-      "top",
-      "rewards",
-      "levels",
-      "addxp",
-      "removexp",
-      "profile",
-      "avatar",
-      "banner",
-      "bio",
-      "setbio",
-      "rep",
-      "reps",
-      "friends",
-      "status",
-      "social",
-      "serverinfo",
-      "info",
-      "userinfo",
-      "botinfo",
-      "servericon",
-      "roleinfo",
-      "channelinfo",
-      "rolelist",
-      "membercount",
-      "invite",
-      "kick",
-      "ban",
-      "unban",
-      "timeout",
-      "untimeout",
-      "clear",
-      "warn",
-      "warnings",
-      "lock",
-      "unlock",
-      "8ball",
-      "dice",
-      "rps",
-      "joke",
-      "ship",
-      "choose",
-      "reverse",
-      "say",
-      "random",
-      "hug",
-      "logs",
-      "antiraid",
-      "antilink",
-      "antispam",
-      "channelprotect",
-      "welcome",
-      "autorole",
-      "settings"
-    ];
-
-    if (!knownCommands.includes(command)) {
-      return message.reply(
-        `❌ Comando desconocido. Usa \`${PREFIX}help\` para ver los comandos.`
-      );
-    }
+    return message.reply(
+      `❌ Comando desconocido. Usa \`${PREFIX}help\` para ver los comandos.`
+    );
 
   } catch (error) {
     console.error(
@@ -2622,14 +2866,20 @@ if (!process.env.DISCORD_TOKEN) {
   console.error(
     "❌ FALTA LA VARIABLE DISCORD_TOKEN EN RENDER."
   );
+
   process.exit(1);
 }
 
-console.log("🔄 Conectando Naruto Uzumaki a Discord...");
+console.log(
+  "🔄 Conectando Naruto Uzumaki a Discord..."
+);
 
 client.login(
   process.env.DISCORD_TOKEN
 ).catch(error => {
-  console.error("❌ ERROR AL INICIAR SESIÓN EN DISCORD:");
+  console.error(
+    "❌ ERROR AL INICIAR SESIÓN EN DISCORD:"
+  );
+
   console.error(error);
 });
