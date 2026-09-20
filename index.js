@@ -1,7 +1,7 @@
 // ============================================================
 // 🍥 NARUTO — DISCORD BOT
 // discord.js v14
-// Prefix: N!
+// PREFIX: N!
 // ============================================================
 
 const {
@@ -28,25 +28,6 @@ const http = require("http");
 
 const PREFIX = "N!";
 const DATA_FILE = path.join(__dirname, "data.json");
-const PORT = process.env.PORT || 3000;
-
-// ============================================================
-// 🌐 SERVIDOR PARA RENDER
-// ============================================================
-
-http.createServer((req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "text/plain; charset=utf-8"
-  });
-
-  res.end("🍥 Naruto está conectado correctamente.");
-}).listen(PORT, "0.0.0.0", () => {
-  console.log(`🌐 Web server iniciado en puerto ${PORT}`);
-});
-
-// ============================================================
-// 🤖 CLIENT
-// ============================================================
 
 const client = new Client({
   intents: [
@@ -55,7 +36,6 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ],
-
   partials: [
     Partials.Channel,
     Partials.Message,
@@ -65,30 +45,45 @@ const client = new Client({
 });
 
 // ============================================================
-// 🎨 DECORACIÓN
+// 🌐 RENDER / KEEP ALIVE
 // ============================================================
 
-const LINE = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
+const PORT = process.env.PORT || 3000;
 
-function embed(title, description, color = 0xff6b00) {
-  return new EmbedBuilder()
-    .setColor(color)
-    .setTitle(title)
-    .setDescription(description)
-    .setTimestamp()
-    .setFooter({
-      text: "🍥 Naruto • N!"
-    });
-}
+http.createServer((req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/plain; charset=utf-8"
+  });
+
+  res.end("🍥 Naruto está conectado correctamente.");
+}).listen(PORT, "0.0.0.0");
 
 // ============================================================
-// 💾 DATABASE
+// 💾 BASE DE DATOS
 // ============================================================
 
 let db = {
   users: {},
   guilds: {}
 };
+
+function loadDB() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, "utf8");
+      db = JSON.parse(raw);
+
+      if (!db.users) db.users = {};
+      if (!db.guilds) db.guilds = {};
+    }
+  } catch (err) {
+    console.error("❌ Error cargando data.json:", err);
+    db = {
+      users: {},
+      guilds: {}
+    };
+  }
+}
 
 function saveDB() {
   try {
@@ -97,169 +92,128 @@ function saveDB() {
       JSON.stringify(db, null, 2),
       "utf8"
     );
-  } catch (error) {
-    console.error("❌ Error guardando DB:", error);
-  }
-}
-
-function loadDB() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      saveDB();
-      return;
-    }
-
-    const data = fs.readFileSync(
-      DATA_FILE,
-      "utf8"
-    );
-
-    if (!data.trim()) {
-      saveDB();
-      return;
-    }
-
-    const parsed = JSON.parse(data);
-
-    db.users = parsed.users || {};
-    db.guilds = parsed.guilds || {};
-  } catch (error) {
-    console.error("❌ Error cargando DB:", error);
-
-    db = {
-      users: {},
-      guilds: {}
-    };
-
-    saveDB();
+  } catch (err) {
+    console.error("❌ Error guardando data.json:", err);
   }
 }
 
 loadDB();
 
 // ============================================================
-// 👤 USUARIO
+// 👤 USUARIOS
 // ============================================================
+
+function defaultUser() {
+  return {
+    money: 100,
+    bank: 0,
+    xp: 0,
+    level: 1,
+    reps: 0,
+    warnings: 0,
+    bio: "",
+    lastDaily: 0,
+    lastWork: 0
+  };
+}
 
 function getUser(id) {
   if (!db.users[id]) {
-    db.users[id] = {
-      money: 100,
-      bank: 0,
-      xp: 0,
-      level: 1,
-      reps: 0,
-      warnings: 0,
-      bio: "Sin biografía.",
-      lastDaily: 0,
-      lastWork: 0
-    };
+    db.users[id] = defaultUser();
   }
 
-  const user = db.users[id];
+  const defaults = defaultUser();
 
-  user.money = Number(user.money) || 0;
-  user.bank = Number(user.bank) || 0;
-  user.xp = Number(user.xp) || 0;
-  user.level = Number(user.level) || 1;
-  user.reps = Number(user.reps) || 0;
-  user.warnings = Number(user.warnings) || 0;
-  user.lastDaily = Number(user.lastDaily) || 0;
-  user.lastWork = Number(user.lastWork) || 0;
-
-  if (typeof user.bio !== "string") {
-    user.bio = "Sin biografía.";
+  for (const key of Object.keys(defaults)) {
+    if (db.users[id][key] === undefined) {
+      db.users[id][key] = defaults[key];
+    }
   }
 
-  return user;
+  return db.users[id];
 }
 
 // ============================================================
-// 🏠 SERVIDOR
+// 🏠 SERVIDORES
 // ============================================================
 
 function defaultGuild() {
   return {
     logsChannel: null,
 
-    // 🔗 ANTILINK
     antilink: {
       enabled: false,
       timeout: 2 * 60 * 60 * 1000,
       whitelist: []
     },
 
-    // 🤖 ANTIRAID
     antiraid: {
       enabled: false,
       botWhitelist: []
     },
 
-    // 🛡️ ANTI-NUKE
     antinuke: {
       enabled: false,
-
       protectChannels: true,
       protectRoles: true,
-
       whitelistUsers: [],
       whitelistRoles: [],
-
       action: "kick"
     },
 
-    // 👋 BIENVENIDA
     welcome: {
       enabled: false,
       channel: null
     },
 
-    // 🎭 AUTOROL
     autorole: {
       enabled: false,
       role: null
     },
 
-    // 🏆 RANK
     rank: {
-      text:
-        "🍥 {user}, eres ninja al nivel **{level}**.\n⭐ XP: **{xp}/{needed}**"
+      text: "🍥 {user}, eres ninja al nivel **{level}**.\n⭐ XP: **{xp}/{needed}**",
+      channel: null,
+      levelMessage:
+        "🎉 {user} ha subido al nivel **{level}**.",
+      enabled: true
     },
 
-    // 🛒 TIENDA
     shop: {
       roles: {}
     }
   };
 }
 
-function getGuild(id) {
-  if (!db.guilds[id]) {
-    db.guilds[id] = defaultGuild();
+function getGuild(guildId) {
+  if (!db.guilds[guildId]) {
+    db.guilds[guildId] = defaultGuild();
   }
-
-  const g = db.guilds[id];
 
   const defaults = defaultGuild();
 
-  if (!g.antilink) {
-    g.antilink = defaults.antilink;
+  for (const key of Object.keys(defaults)) {
+    if (db.guilds[guildId][key] === undefined) {
+      db.guilds[guildId][key] = defaults[key];
+    }
   }
+
+  const g = db.guilds[guildId];
+
+  if (!g.antilink) g.antilink = defaults.antilink;
+  if (!g.antiraid) g.antiraid = defaults.antiraid;
+  if (!g.antinuke) g.antinuke = defaults.antinuke;
+  if (!g.welcome) g.welcome = defaults.welcome;
+  if (!g.autorole) g.autorole = defaults.autorole;
+  if (!g.rank) g.rank = defaults.rank;
+  if (!g.shop) g.shop = defaults.shop;
 
   if (!Array.isArray(g.antilink.whitelist)) {
     g.antilink.whitelist = [];
   }
 
-  if (!g.antiraid) {
-    g.antiraid = defaults.antiraid;
-  }
-
   if (!Array.isArray(g.antiraid.botWhitelist)) {
     g.antiraid.botWhitelist = [];
-  }
-
-  if (!g.antinuke) {
-    g.antinuke = defaults.antinuke;
   }
 
   if (!Array.isArray(g.antinuke.whitelistUsers)) {
@@ -270,599 +224,154 @@ function getGuild(id) {
     g.antinuke.whitelistRoles = [];
   }
 
-  if (!g.welcome) {
-    g.welcome = defaults.welcome;
-  }
-
-  if (!g.autorole) {
-    g.autorole = defaults.autorole;
-  }
-
-  if (!g.rank) {
-    g.rank = defaults.rank;
-  }
-
-  if (!g.rank.text) {
-    g.rank.text = defaults.rank.text;
-  }
-
-  if (!g.shop) {
-    g.shop = {
-      roles: {}
-    };
-  }
-
-  if (!g.shop.roles) {
-    g.shop.roles = {};
-  }
+  if (!g.rank.channel) g.rank.channel = null;
+  if (g.rank.enabled === undefined) g.rank.enabled = true;
 
   return g;
 }
 
 // ============================================================
-// 🔐 PERMISOS
+// 🛡️ UTILIDADES
 // ============================================================
 
 function isAdmin(member) {
-  return !!member?.permissions.has(
-    PermissionsBitField.Flags.Administrator
+  return (
+    member &&
+    member.permissions &&
+    member.permissions.has(
+      PermissionsBitField.Flags.Administrator
+    )
   );
 }
 
-// ============================================================
-// 📩 MENSAJES LARGOS
-// ============================================================
+function isOwner(member) {
+  return (
+    member &&
+    member.guild &&
+    member.id === member.guild.ownerId
+  );
+}
 
 async function replyLong(message, text) {
-  text = String(text);
+  if (!text) return;
 
-  if (text.length <= 2000) {
-    return message.reply(text);
+  const chunks = [];
+
+  for (let i = 0; i < text.length; i += 1900) {
+    chunks.push(text.slice(i, i + 1900));
   }
 
-  await message.reply(
-    text.slice(0, 1900)
-  );
-
-  for (
-    let i = 1900;
-    i < text.length;
-    i += 1900
-  ) {
-    await message.channel.send(
-      text.slice(i, i + 1900)
-    );
+  for (const chunk of chunks) {
+    await message.channel.send(chunk);
   }
 }
 
-// ============================================================
-// 📝 LOGS
-// ============================================================
-
-async function sendLog(guild, logEmbed) {
+async function safeReply(message, text) {
   try {
-    const g = getGuild(guild.id);
+    return await message.reply(text);
+  } catch {
+    return null;
+  }
+}
 
-    if (!g.logsChannel) return;
+function mentionUser(user) {
+  return `<@${user.id}>`;
+}
 
-    const channel =
-      guild.channels.cache.get(
-        g.logsChannel
-      );
+function neededXP(level) {
+  return 100 + (level - 1) * 50;
+}
 
-    if (
-      channel &&
-      channel.isTextBased()
-    ) {
-      await channel.send({
-        embeds: [logEmbed]
-      }).catch(() => {});
-    }
-  } catch {}
+function replaceRankText(text, user, data) {
+  const needed = neededXP(data.level);
+
+  return text
+    .replaceAll("{user}", `<@${user.id}>`)
+    .replaceAll("{username}", user.username)
+    .replaceAll("{level}", String(data.level))
+    .replaceAll("{xp}", String(data.xp))
+    .replaceAll("{needed}", String(needed));
 }
 
 // ============================================================
-// ⭐ XP
+// ⭐ XP / RANK
 // ============================================================
 
-function addXP(user, amount = 5) {
+async function addXP(member, amount = 5) {
+  if (!member || !member.user) return;
+
+  const user = getUser(member.id);
+  const guildData = getGuild(member.guild.id);
+
   user.xp += amount;
 
-  let levelUp = false;
+  let leveledUp = false;
 
-  while (
-    user.xp >= user.level * 100
-  ) {
-    user.xp -= user.level * 100;
+  while (user.xp >= neededXP(user.level)) {
+    user.xp -= neededXP(user.level);
     user.level++;
-    levelUp = true;
+    leveledUp = true;
   }
 
   saveDB();
 
-  return levelUp;
-}
-
-// ============================================================
-// 🏆 RANK PERSONALIZADO
-// ============================================================
-
-function getRankText(
-  guildSettings,
-  user,
-  discordUser
-) {
-  const needed =
-    user.level * 100;
-
-  return guildSettings.rank.text
-    .replace(
-      /\{user\}/gi,
-      discordUser.toString()
-    )
-    .replace(
-      /\{username\}/gi,
-      discordUser.username
-    )
-    .replace(
-      /\{level\}/gi,
-      String(user.level)
-    )
-    .replace(
-      /\{xp\}/gi,
-      String(user.xp)
-    )
-    .replace(
-      /\{needed\}/gi,
-      String(needed)
-    );
-}
-
-// ============================================================
-// 🔐 WHITELIST ANTI-NUKE
-// ============================================================
-
-function isAntiNukeWhitelisted(
-  member,
-  settings
-) {
-  if (!member) return false;
+  if (!leveledUp) return;
 
   if (
-    settings.whitelistUsers.includes(
-      member.id
-    )
+    guildData.rank.enabled &&
+    guildData.rank.channel
   ) {
-    return true;
-  }
-
-  return member.roles.cache.some(
-    role =>
-      settings.whitelistRoles.includes(
-        role.id
-      )
-  );
-}
-
-// ============================================================
-// 🔎 AUDIT LOG
-// ============================================================
-
-function wait(ms) {
-  return new Promise(
-    resolve => setTimeout(resolve, ms)
-  );
-}
-
-async function findExecutor(
-  guild,
-  action,
-  targetId
-) {
-  for (
-    let attempt = 0;
-    attempt < 3;
-    attempt++
-  ) {
-    try {
-      const logs =
-        await guild.fetchAuditLogs({
-          type: action,
-          limit: 10
-        });
-
-      const entry =
-        logs.entries.find(
-          entry =>
-            entry.target?.id === targetId &&
-            Date.now() -
-              entry.createdTimestamp <
-              15000
-        );
-
-      if (entry) {
-        return entry.executor;
-      }
-    } catch (error) {
-      console.error(
-        "❌ Error Audit Log:",
-        error
+    const channel =
+      member.guild.channels.cache.get(
+        guildData.rank.channel
       );
+
+    if (channel && channel.isTextBased()) {
+      const text = replaceRankText(
+        guildData.rank.levelMessage,
+        member.user,
+        user
+      );
+
+      channel.send(text).catch(() => {});
     }
-
-    await wait(700);
   }
-
-  return null;
 }
 
 // ============================================================
-// 🛡️ ANTI-NUKE — CANALES
+// 📜 LOGS
 // ============================================================
 
-async function protectChannel(
-  channel,
-  action
-) {
+async function sendLog(guild, embed) {
   try {
-    if (!channel.guild) return;
+    const guildData = getGuild(guild.id);
 
-    const g =
-      getGuild(channel.guild.id);
+    if (!guildData.logsChannel) return;
 
-    if (
-      !g.antinuke.enabled ||
-      !g.antinuke.protectChannels
-    ) {
-      return;
-    }
-
-    const executor =
-      await findExecutor(
-        channel.guild,
-        action === "create"
-          ? AuditLogEvent.ChannelCreate
-          : AuditLogEvent.ChannelDelete,
-        channel.id
+    const channel =
+      guild.channels.cache.get(
+        guildData.logsChannel
       );
 
-    if (!executor) return;
+    if (!channel || !channel.isTextBased()) return;
 
-    if (
-      executor.id === client.user.id
-    ) {
-      return;
-    }
-
-    const member =
-      await channel.guild.members
-        .fetch(executor.id)
-        .catch(() => null);
-
-    if (!member) return;
-
-    // El dueño nunca queda atrapado
-    if (
-      member.id ===
-      channel.guild.ownerId
-    ) {
-      return;
-    }
-
-    if (
-      isAntiNukeWhitelisted(
-        member,
-        g.antinuke
-      )
-    ) {
-      return;
-    }
-
-    if (
-      !member.kickable
-    ) {
-      await sendLog(
-        channel.guild,
-        embed(
-          "🚨 ANTI-NUKE",
-          `👤 Usuario: ${member.user.tag}\n` +
-          `📁 Acción: ${
-            action === "create"
-              ? "Creó"
-              : "Eliminó"
-          } un canal\n\n` +
-          `❌ Naruto no pudo expulsarlo.`,
-          0xff0000
-        )
-      );
-
-      return;
-    }
-
-    await member.kick(
-      `Naruto Anti-Nuke — ${
-        action === "create"
-          ? "creó"
-          : "eliminó"
-      } un canal sin whitelist`
-    ).catch(() => {});
-
-    await sendLog(
-      channel.guild,
-      embed(
-        "🛡️ ANTI-NUKE ACTIVADO",
-        `👤 **Usuario:** ${member.user.tag}\n` +
-        `📁 **Acción:** ${
-          action === "create"
-            ? "Creó"
-            : "Eliminó"
-        } un canal\n` +
-        `🔨 **Sanción:** Kick\n` +
-        `❌ **Whitelist:** No`,
-        0xff0000
-      )
-    );
-  } catch (error) {
-    console.error(
-      "❌ Anti-Nuke canal:",
-      error
-    );
+    await channel.send({
+      embeds: [embed]
+    });
+  } catch (err) {
+    console.error("❌ Error enviando log:", err.message);
   }
 }
 
-// ============================================================
-// 🛡️ ANTI-NUKE — ROLES
-// ============================================================
-
-async function protectRole(
-  role,
-  action
-) {
-  try {
-    const g =
-      getGuild(role.guild.id);
-
-    if (
-      !g.antinuke.enabled ||
-      !g.antinuke.protectRoles
-    ) {
-      return;
-    }
-
-    const executor =
-      await findExecutor(
-        role.guild,
-        action === "create"
-          ? AuditLogEvent.RoleCreate
-          : AuditLogEvent.RoleDelete,
-        role.id
-      );
-
-    if (!executor) return;
-
-    if (
-      executor.id === client.user.id
-    ) {
-      return;
-    }
-
-    const member =
-      await role.guild.members
-        .fetch(executor.id)
-        .catch(() => null);
-
-    if (!member) return;
-
-    if (
-      member.id === role.guild.ownerId
-    ) {
-      return;
-    }
-
-    if (
-      isAntiNukeWhitelisted(
-        member,
-        g.antinuke
-      )
-    ) {
-      return;
-    }
-
-    if (!member.kickable) {
-      return;
-    }
-
-    await member.kick(
-      `Naruto Anti-Nuke — ${
-        action === "create"
-          ? "creó"
-          : "eliminó"
-      } un rol sin whitelist`
-    ).catch(() => {});
-
-    await sendLog(
-      role.guild,
-      embed(
-        "🎭 ANTI-NUKE ACTIVADO",
-        `👤 **Usuario:** ${member.user.tag}\n` +
-        `🎭 **Acción:** ${
-          action === "create"
-            ? "Creó"
-            : "Eliminó"
-        } un rol\n` +
-        `🔨 **Sanción:** Kick\n` +
-        `❌ **Whitelist:** No`,
-        0xff0000
-      )
-    );
-  } catch (error) {
-    console.error(
-      "❌ Anti-Nuke rol:",
-      error
-    );
-  }
+function logEmbed(title, description) {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setTimestamp()
+    .setFooter({
+      text: "🍥 Naruto Logs"
+    });
 }
-
-// ============================================================
-// 📁 EVENTOS ANTI-NUKE
-// ============================================================
-
-client.on(
-  Events.ChannelCreate,
-  channel => {
-    protectChannel(
-      channel,
-      "create"
-    );
-  }
-);
-
-client.on(
-  Events.ChannelDelete,
-  channel => {
-    protectChannel(
-      channel,
-      "delete"
-    );
-  }
-);
-
-client.on(
-  Events.GuildRoleCreate,
-  role => {
-    protectRole(
-      role,
-      "create"
-    );
-  }
-);
-
-client.on(
-  Events.GuildRoleDelete,
-  role => {
-    protectRole(
-      role,
-      "delete"
-    );
-  }
-);
-
-// ============================================================
-// 🤖 ANTIRAID
-// ============================================================
-
-client.on(
-  Events.GuildMemberAdd,
-  async member => {
-    try {
-      const g =
-        getGuild(member.guild.id);
-
-      // ========================================================
-      // 🤖 BOT NO AUTORIZADO
-      // ========================================================
-
-      if (
-        member.user.bot &&
-        g.antiraid.enabled
-      ) {
-        const allowed =
-          g.antiraid.botWhitelist.includes(
-            member.user.id
-          );
-
-        if (!allowed) {
-          console.log(
-            `🚨 ANTIRAID: ${member.user.tag}`
-          );
-
-          await member.ban({
-            reason:
-              "Naruto AntiRaid — Bot no autorizado"
-          }).catch(error => {
-            console.error(
-              "❌ No pude banear bot:",
-              error
-            );
-          });
-
-          await sendLog(
-            member.guild,
-            embed(
-              "🚨 ANTIRAID — BOT BLOQUEADO",
-              `🤖 **Bot:** ${member.user.tag}\n` +
-              `🆔 **ID:** \`${member.user.id}\`\n` +
-              `🔨 **Acción:** BAN PERMANENTE\n\n` +
-              `❌ El bot no estaba en la whitelist.`,
-              0xff0000
-            )
-          );
-        }
-
-        return;
-      }
-
-      // ========================================================
-      // 👋 BIENVENIDA
-      // ========================================================
-
-      if (
-        !member.user.bot &&
-        g.welcome.enabled &&
-        g.welcome.channel
-      ) {
-        const channel =
-          member.guild.channels.cache.get(
-            g.welcome.channel
-          );
-
-        if (
-          channel &&
-          channel.isTextBased()
-        ) {
-          await channel.send(
-            `╔══════════════════════════╗\n` +
-            `║ 🍥 **NUEVO NINJA** 🍥\n` +
-            `╚══════════════════════════╝\n\n` +
-            `👋 ¡Bienvenido/a ${member}!\n` +
-            `🏠 ${member.guild.name}\n\n` +
-            `🥷 ¡Tu camino ninja comienza ahora!`
-          ).catch(() => {});
-        }
-      }
-
-      // ========================================================
-      // 🎭 AUTOROLE
-      // ========================================================
-
-      if (
-        !member.user.bot &&
-        g.autorole.enabled &&
-        g.autorole.role
-      ) {
-        const role =
-          member.guild.roles.cache.get(
-            g.autorole.role
-          );
-
-        if (
-          role &&
-          role.editable
-        ) {
-          await member.roles.add(
-            role,
-            "Naruto Autorole"
-          ).catch(() => {});
-        }
-      }
-    } catch (error) {
-      console.error(
-        "❌ GuildMemberAdd:",
-        error
-      );
-    }
-  }
-);
 
 // ============================================================
 // 🔗 DETECTOR DE LINKS
@@ -870,2346 +379,3638 @@ client.on(
 
 function containsLink(text) {
   const regex =
-    /(https?:\/\/[^\s]+|www\.[^\s]+|(?:[a-z0-9-]+\.)+(?:com|net|org|gg|io|xyz|me|co|es|dev|site|online)(?:\/[^\s]*)?)/i;
+    /(https?:\/\/|www\.|discord\.gg\/|discord\.com\/invite\/|[a-z0-9-]+\.(com|net|org|gg|io|xyz|me|co|tv|site|online|dev|app|store|shop|pro|live|link|club)(\/|$|\s))/i;
 
   return regex.test(text);
 }
 
+function isWhitelistedLink(text, whitelist) {
+  if (!Array.isArray(whitelist)) return false;
+
+  return whitelist.some(domain =>
+    text.toLowerCase().includes(domain.toLowerCase())
+  );
+}
+
 // ============================================================
-// 📚 30 COMANDOS
+// 🔐 ANTINUKE
+// ============================================================
+
+async function getAuditExecutor(
+  guild,
+  type,
+  targetId
+) {
+  try {
+    const logs = await guild.fetchAuditLogs({
+      type,
+      limit: 10
+    });
+
+    const entry = logs.entries.find(entry => {
+      if (targetId && entry.target?.id !== targetId) {
+        return false;
+      }
+
+      return (
+        Date.now() - entry.createdTimestamp < 15000
+      );
+    });
+
+    return entry?.executor || null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleStructureProtection(
+  guild,
+  type,
+  targetId,
+  description
+) {
+  const config = getGuild(guild.id);
+
+  if (!config.antinuke.enabled) return;
+
+  const protectChannels =
+    type === AuditLogEvent.ChannelCreate ||
+    type === AuditLogEvent.ChannelDelete;
+
+  const protectRoles =
+    type === AuditLogEvent.RoleCreate ||
+    type === AuditLogEvent.RoleDelete;
+
+  if (
+    protectChannels &&
+    !config.antinuke.protectChannels
+  ) {
+    return;
+  }
+
+  if (
+    protectRoles &&
+    !config.antinuke.protectRoles
+  ) {
+    return;
+  }
+
+  const executor = await getAuditExecutor(
+    guild,
+    type,
+    targetId
+  );
+
+  if (!executor) return;
+
+  if (executor.id === client.user.id) return;
+  if (executor.id === guild.ownerId) return;
+
+  if (
+    config.antinuke.whitelistUsers.includes(
+      executor.id
+    )
+  ) {
+    return;
+  }
+
+  const executorMember =
+    guild.members.cache.get(executor.id) ||
+    await guild.members.fetch(executor.id).catch(() => null);
+
+  if (!executorMember) return;
+
+  const hasWhitelistedRole =
+    executorMember.roles.cache.some(role =>
+      config.antinuke.whitelistRoles.includes(role.id)
+    );
+
+  if (hasWhitelistedRole) return;
+
+  if (config.antinuke.action === "kick") {
+    if (executorMember.kickable) {
+      await executorMember.kick(
+        "🍥 Naruto Anti-Nuke"
+      ).catch(() => {});
+    }
+  }
+
+  await sendLog(
+    guild,
+    logEmbed(
+      "🚨 Anti-Nuke activado",
+      `${description}\n👤 Responsable: ${executor.tag || executor.username}\n🛡️ Acción: **${config.antinuke.action}**`
+    )
+  );
+}
+
+// ============================================================
+// 🎫 PARSEAR DURACIONES
+// ============================================================
+
+function parseDuration(input) {
+  if (!input) return null;
+
+  const match = input
+    .toLowerCase()
+    .match(/^(\d+)(s|m|h|d)$/);
+
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const unit = match[2];
+
+  const multipliers = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000
+  };
+
+  return amount * multipliers[unit];
+}
+
+// ============================================================
+// 🛒 SHOP
+// ============================================================
+
+async function showShop(message) {
+  const guildData = getGuild(message.guild.id);
+  const products = Object.entries(
+    guildData.shop.roles || {}
+  );
+
+  if (!products.length) {
+    return safeReply(
+      message,
+      "🛒 La Shop está vacía actualmente."
+    );
+  }
+
+  for (const [roleId, price] of products) {
+    const role =
+      message.guild.roles.cache.get(roleId);
+
+    if (!role) continue;
+
+    const embed = new EmbedBuilder()
+      .setTitle("🛒 Shop de Naruto")
+      .setDescription(
+        `🎭 **${role.name}**\n💰 Precio: **$${price}**`
+      )
+      .setFooter({
+        text: "Pulsa 🛒 Comprar para adquirir el rol."
+      });
+
+    const button = new ButtonBuilder()
+      .setCustomId(`buyrole_${role.id}`)
+      .setLabel("Comprar")
+      .setEmoji("🛒")
+      .setStyle(ButtonStyle.Success);
+
+    const row = new ActionRowBuilder()
+      .addComponents(button);
+
+    await message.channel.send({
+      embeds: [embed],
+      components: [row]
+    });
+  }
+}
+
+// ============================================================
+// 📚 CATEGORÍAS
 // ============================================================
 
 const categories = {
-  economia: {
+
+  economy: {
     name: "💰 Economía",
     commands: [
-      ["balance", "Ver tu dinero"],
-      ["daily", "Recompensa diaria"],
-      ["work", "Trabajar"],
-      ["pay", "Pagar a otro usuario"],
-      ["deposit", "Depositar dinero"],
-      ["withdraw", "Retirar dinero"]
+      "balance",
+      "daily",
+      "work",
+      "pay",
+      "deposit",
+      "withdraw",
+      "bank",
+      "richest",
+      "money",
+      "cash",
+      "wallet",
+      "coins",
+      "salary",
+      "job",
+      "mymoney",
+      "wealth",
+      "economy",
+      "depositall",
+      "withdrawall",
+      "transfer",
+      "give",
+      "funds",
+      "capital",
+      "earnings",
+      "salarycheck",
+      "cashinfo",
+      "balanceinfo",
+      "paycheck",
+      "income",
+      "fortune"
+    ]
+  },
+
+  moderation: {
+    name: "🛡️ Moderación",
+    commands: [
+      "ban",
+      "unban",
+      "kick",
+      "softban",
+      "timeout",
+      "untimeout",
+      "mute",
+      "unmute",
+      "warn",
+      "warnings",
+      "clear",
+      "purge",
+      "lock",
+      "unlock",
+      "slowmode",
+      "nick",
+      "resetnick",
+      "voicekick",
+      "deafen",
+      "undeafen",
+      "modlog",
+      "reason",
+      "massban",
+      "tempban",
+      "tempkick",
+      "modstats",
+      "jail",
+      "unjail",
+      "warnclear",
+      "unwarn"
+    ]
+  },
+
+  shop: {
+    name: "🛒 Shop",
+    commands: [
+      "shop",
+      "tienda",
+      "nshop",
+      "store",
+      "market",
+      "marketplace",
+      "productos",
+      "catalogo",
+      "precios",
+      "shoplist",
+      "shopinfo",
+      "items",
+      "item",
+      "comprar",
+      "buy",
+      "purchase",
+      "myroles",
+      "owned",
+      "inventory",
+      "inv",
+      "shoproles",
+      "rolestienda",
+      "shopadd",
+      "shopremove",
+      "shopprice",
+      "shopclear",
+      "shopreset",
+      "productlist",
+      "shopmenu",
+      "shopping"
     ]
   },
 
   rank: {
     name: "🏆 Rank",
     commands: [
-      ["rank", "Ver tu rank"],
-      ["xp", "Ver tu XP"],
-      ["level", "Ver tu nivel"],
-      ["leaderboard", "Ver ranking"],
-      ["levels", "Información de niveles"]
+      "rank",
+      "level",
+      "xp",
+      "leaderboard",
+      "top",
+      "rankcard",
+      "rewards",
+      "levels",
+      "mylevel",
+      "myxp",
+      "xptop",
+      "leveltop",
+      "progress",
+      "nextlevel",
+      "globalrank",
+      "guildrank",
+      "xpinfo",
+      "ranking",
+      "stats",
+      "progressbar",
+      "levelinfo",
+      "xpneeded",
+      "rankinfo",
+      "xprank",
+      "levelrank",
+      "ranktop",
+      "nlevel",
+      "nprogress",
+      "ninjarank",
+      "ranktitle"
     ]
   },
 
   social: {
     name: "👤 Social",
     commands: [
-      ["profile", "Ver perfil"],
-      ["avatar", "Ver avatar"],
-      ["userinfo", "Información de usuario"],
-      ["bio", "Ver biografía"],
-      ["setbio", "Cambiar biografía"]
+      "profile",
+      "avatar",
+      "banner",
+      "bio",
+      "setbio",
+      "rep",
+      "reps",
+      "userinfo",
+      "aboutme",
+      "member",
+      "joined",
+      "created",
+      "rolesme",
+      "mention",
+      "id",
+      "account",
+      "social",
+      "whois",
+      "user",
+      "me",
+      "userprofile",
+      "profileinfo",
+      "reputation",
+      "repcount",
+      "mybio",
+      "setdescription",
+      "memberinfo",
+      "accountinfo",
+      "userstats",
+      "identity"
     ]
   },
 
-  servidor: {
-    name: "🏠 Servidor",
-    commands: [
-      ["serverinfo", "Información del servidor"],
-      ["servericon", "Icono del servidor"],
-      ["roles", "Lista de roles"],
-      ["channels", "Lista de canales"],
-      ["ping", "Ver ping"]
-    ]
-  },
-
-  diversion: {
+  fun: {
     name: "🎮 Diversión",
     commands: [
-      ["8ball", "Pregúntale al 8ball"],
-      ["dice", "Tirar dado"],
-      ["coinflip", "Lanzar moneda"],
-      ["rps", "Piedra, papel o tijera"],
-      ["choose", "Elegir entre opciones"]
+      "8ball",
+      "dice",
+      "rps",
+      "joke",
+      "choose",
+      "reverse",
+      "say",
+      "random",
+      "coinflip",
+      "roll",
+      "number",
+      "truth",
+      "dare",
+      "rate",
+      "roast",
+      "compliment",
+      "meme",
+      "cat",
+      "ninja",
+      "luck",
+      "magic8",
+      "flip",
+      "funfact",
+      "magic",
+      "numberguess",
+      "clap",
+      "yesno",
+      "hi",
+      "ramen",
+      "jutsu"
     ]
   },
 
-  tienda: {
-    name: "🛒 Tienda",
+  server: {
+    name: "🏠 Servidor",
     commands: [
-      ["shop", "Abrir tienda"],
-      ["comprar", "Comprar un producto"],
-      ["productos", "Ver productos"],
-      ["inventory", "Ver tus roles"],
-      ["owned", "Ver tus compras"]
-    ]
-  }
-};
-
-// ============================================================
-// 🔐 COMANDOS ADMIN
-// ============================================================
-
-const adminCategories = {
-  moderacion: {
-    name: "🛡️ Moderación",
-    commands: [
-      ["ban", "Ban permanente"],
-      ["kick", "Expulsar usuario"],
-      ["timeout", "Timeout"],
-      ["untimeout", "Quitar timeout"],
-      ["warn", "Advertir usuario"],
-      ["clear", "Borrar mensajes"]
-    ]
-  },
-
-  seguridad: {
-    name: "🔒 Seguridad",
-    commands: [
-      ["antilink", "Configurar AntiLink"],
-      ["antiraid", "Configurar AntiRaid"],
-      ["antinuke", "Configurar Anti-Nuke"],
-      ["whitelist", "Administrar whitelist"],
-      ["setlogs", "Configurar logs"],
-      ["security", "Ver seguridad"]
+      "serverinfo",
+      "servericon",
+      "roleinfo",
+      "channelinfo",
+      "rolelist",
+      "membercount",
+      "members",
+      "channels",
+      "roles",
+      "emojis",
+      "stickers",
+      "boosts",
+      "owner",
+      "createdserver",
+      "serverid",
+      "invite",
+      "ping",
+      "stats",
+      "serverstats",
+      "guildinfo",
+      "guildid",
+      "icon",
+      "rolescount",
+      "channelcount",
+      "emojicount",
+      "boostinfo",
+      "serverowner",
+      "datecreated",
+      "info",
+      "guild"
     ]
   },
 
-  configuracion: {
+  security: {
+    name: "🔐 Seguridad",
+    commands: [
+      "antilink",
+      "antiraid",
+      "antinuke",
+      "whitelist",
+      "botwhitelist",
+      "antiwhitelist",
+      "antichannel",
+      "antirole",
+      "protection",
+      "security",
+      "setlogs",
+      "disablelogs",
+      "testlogs",
+      "logchannel",
+      "logs",
+      "audit",
+      "auditlog",
+      "raidstatus",
+      "linkstatus",
+      "nukestatus",
+      "whitelistusers",
+      "whitelistroles",
+      "whitelistbots",
+      "addwhitelist",
+      "removewhitelist",
+      "addbot",
+      "removebot",
+      "securityinfo",
+      "protectionstatus",
+      "antihelp"
+    ]
+  },
+
+  config: {
     name: "⚙️ Configuración",
     commands: [
-      ["welcome", "Configurar bienvenida"],
-      ["autorole", "Configurar autorol"],
-      ["setranktext", "Personalizar Rank"],
-      ["settings", "Ver configuración"],
-      ["testlogs", "Probar logs"],
-      ["disablelogs", "Desactivar logs"]
+      "settings",
+      "config",
+      "setup",
+      "welcome",
+      "autorole",
+      "setranktext",
+      "ranktitle",
+      "setprefix",
+      "welcomechannel",
+      "autoroleset",
+      "ranktext",
+      "shopadd",
+      "shopremove",
+      "shopprice",
+      "shopclear",
+      "shopreset",
+      "setlogs",
+      "disablelogs",
+      "testlogs",
+      "helpadmin",
+      "help",
+      "reload",
+      "database",
+      "backup",
+      "botstatus",
+      "activity",
+      "language",
+      "modules",
+      "serverconfig"
+    ]
+  },
+
+  roles: {
+    name: "🎭 Roles",
+    commands: [
+      "roleinfo",
+      "rolelist",
+      "roles",
+      "addrole",
+      "removerole",
+      "giverole",
+      "takerole",
+      "roleadd",
+      "roleremove",
+      "rolecreate",
+      "roledelete",
+      "rolecolor",
+      "rolehoist",
+      "rolemention",
+      "roleshop",
+      "autorole",
+      "autoroleset",
+      "rolecount",
+      "memberroles",
+      "rolesme",
+      "myroles",
+      "rolemembers",
+      "rolepos",
+      "move",
+      "roleedit",
+      "roleperm",
+      "rolecheck",
+      "rolewhitelist",
+      "roleprotect",
+      "rolehelp"
     ]
   }
 };
 
 // ============================================================
-// 📖 HELP PRINCIPAL
+// 📚 DESCRIPCIONES DEL HELP
 // ============================================================
 
-function mainHelp(member) {
-  const description =
-    `╭────────────────────────────╮\n` +
-    `│ 🍥 **BIENVENIDO AL PANEL DE NARUTO**\n` +
-    `╰────────────────────────────╯\n\n` +
-    `Selecciona una categoría abajo para ver los comandos.\n\n` +
-    `⚡ Prefix: \`${PREFIX}\`\n` +
-    `📚 **30 comandos públicos**\n` +
-    `🔐 Panel administrativo disponible para administradores.`;
+function commandDescription(command) {
+  const descriptions = {
 
-  const e =
-    new EmbedBuilder()
-      .setColor(0xff6b00)
-      .setTitle("🍥 NARUTO — CENTRO DE AYUDA")
-      .setDescription(description)
-      .addFields(
-        {
-          name: "💰 Economía",
-          value: "Dinero y recompensas.",
-          inline: true
-        },
-        {
-          name: "🏆 Rank",
-          value: "XP y niveles.",
-          inline: true
-        },
-        {
-          name: "👤 Social",
-          value: "Perfiles.",
-          inline: true
-        },
-        {
-          name: "🏠 Servidor",
-          value: "Información.",
-          inline: true
-        },
-        {
-          name: "🎮 Diversión",
-          value: "Juegos.",
-          inline: true
-        },
-        {
-          name: "🛒 Tienda",
-          value: "Compra roles.",
-          inline: true
-        }
-      )
-      .setFooter({
-        text: "🍥 Naruto • 30 comandos"
-      });
+    balance: "💰 Ver tu dinero.",
+    daily: "🎁 Reclamar recompensa diaria.",
+    work: "💼 Trabajar para ganar dinero.",
+    pay: "💸 Enviar dinero a otro usuario.",
+    deposit: "🏦 Depositar dinero.",
+    withdraw: "🏧 Retirar dinero.",
+    bank: "🏦 Ver tu banco.",
+    richest: "👑 Ver los usuarios con más dinero.",
 
-  return e;
+    ban: "🔨 Banear a un usuario.",
+    unban: "🔓 Desbanear por ID.",
+    kick: "👢 Expulsar a un usuario.",
+    timeout: "⏱️ Aplicar timeout.",
+    untimeout: "🔓 Quitar timeout.",
+    warn: "⚠️ Dar una advertencia.",
+    clear: "🧹 Borrar mensajes.",
+    purge: "🧹 Limpiar mensajes.",
+    lock: "🔒 Bloquear canal.",
+    unlock: "🔓 Desbloquear canal.",
+
+    shop: "🛒 Abrir la tienda.",
+    shopadd: "➕ Añadir un rol a la Shop.",
+    shopremove: "➖ Quitar un rol de la Shop.",
+    shopprice: "💰 Cambiar precio de un rol.",
+    shopclear: "🗑️ Vaciar la Shop.",
+    shopreset: "♻️ Reiniciar la Shop.",
+
+    rank: "🏆 Ver tu rango.",
+    level: "⭐ Ver tu nivel.",
+    xp: "✨ Ver tu XP.",
+    leaderboard: "🏆 Ver el ranking.",
+    setranktext: "📝 Cambiar el mensaje del Rank.",
+
+    profile: "👤 Ver un perfil.",
+    avatar: "🖼️ Ver avatar.",
+    bio: "📖 Ver biografía.",
+    setbio: "✏️ Cambiar biografía.",
+    rep: "❤️ Dar reputación.",
+
+    antilink: "🔗 Configurar AntiLink.",
+    antiraid: "🚨 Configurar AntiRaid.",
+    antinuke: "☢️ Configurar AntiNuke.",
+    whitelist: "✅ Administrar whitelist.",
+    setlogs: "📜 Configurar canal de logs.",
+
+    serverinfo: "🏠 Ver información del servidor.",
+    roleinfo: "🎭 Ver información de un rol.",
+    channelinfo: "📁 Ver información del canal.",
+    membercount: "👥 Ver cantidad de miembros.",
+
+    help: "📚 Abrir ayuda.",
+    helpadmin: "⚙️ Abrir ayuda de administración."
+  };
+
+  return (
+    descriptions[command] ||
+    `⚙️ Ejecutar ${PREFIX}${command}.`
+  );
 }
 
 // ============================================================
-// 📋 MENÚ HELP
+// 📚 CREAR MENU DE AYUDA
 // ============================================================
 
-function publicMenu(userId, member) {
-  const menu =
-    new StringSelectMenuBuilder()
-      .setCustomId(
-        `public_help_${userId}`
-      )
-      .setPlaceholder(
-        "📚 Selecciona una categoría..."
-      )
-      .addOptions(
-        Object.entries(categories)
-          .map(([key, category]) => ({
-            label:
-              category.name
-                .replace(/[^\p{L}\p{N}\s]/gu, "")
-                .trim(),
+function createHelpMenu(userId, admin = false) {
+  const options = Object.entries(categories).map(
+    ([key, category]) => ({
+      label: category.name,
+      value: key,
+      description: `${category.commands.length} comandos`,
+      emoji: category.name.split(" ")[0]
+    })
+  );
 
-            description:
-              `Ver comandos de ${category.name}`
-                .slice(0, 100),
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(
+      `${admin ? "helpadmin" : "help"}_${userId}`
+    )
+    .setPlaceholder("📚 Selecciona una categoría")
+    .addOptions(options);
 
-            value: key
-          }))
-      );
+  const row = new ActionRowBuilder()
+    .addComponents(menu);
 
-  const rows = [
-    new ActionRowBuilder()
-      .addComponents(menu)
-  ];
-
-  if (isAdmin(member)) {
-    rows.push(
-      new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId(
-              `admin_help_${userId}`
-            )
-            .setLabel(
-              "🔐 Panel Administrativo"
-            )
-            .setStyle(
-              ButtonStyle.Danger
-            )
-        )
-    );
-  }
-
-  return rows;
+  return row;
 }
 
-// ============================================================
-// 📚 CATEGORÍA
-// ============================================================
+function helpCategoryEmbed(categoryKey) {
+  const category = categories[categoryKey];
 
-function categoryEmbed(key) {
-  const category =
-    categories[key];
+  if (!category) return null;
 
-  const commands =
-    category.commands
-      .map(
-        ([command, description], index) =>
-          `**${index + 1}.** \`${PREFIX}${command}\` — ${description}`
-      )
-      .join("\n");
+  const text = category.commands
+    .map(
+      (command, index) =>
+        `**${index + 1}.** \`${PREFIX}${command}\` — ${commandDescription(command)}`
+    )
+    .join("\n");
 
   return new EmbedBuilder()
-    .setColor(0xff6b00)
-    .setTitle(
-      `${category.name} — COMANDOS`
-    )
-    .setDescription(
-      `🍥 **Naruto**\n\n` +
-      `${LINE}\n` +
-      commands
-    )
+    .setTitle(`${category.name} — Naruto`)
+    .setDescription(text)
     .setFooter({
-      text:
-        "Usa el menú para cambiar de categoría."
+      text: `🍥 ${category.commands.length} comandos en esta categoría`
     });
 }
 
 // ============================================================
-// 🔐 ADMIN HELP
+// 📚 HELP
 // ============================================================
 
-function adminHelp() {
-  return new EmbedBuilder()
-    .setColor(0xb00000)
-    .setTitle(
-      "🔐 NARUTO — PANEL ADMINISTRATIVO"
-    )
+async function showHelp(message) {
+  const embed = new EmbedBuilder()
+    .setTitle("🍥 Naruto — Centro de Ayuda")
     .setDescription(
-      `╭────────────────────────────╮\n` +
-      `│ 🛡️ **PANEL DE ADMINISTRACIÓN**\n` +
-      `╰────────────────────────────╯\n\n` +
-      `Selecciona una categoría.\n\n` +
-      `⚠️ Estos comandos requieren permisos de Administrador.`
-    );
-}
+      "Selecciona una categoría para ver sus comandos.\n\n" +
+      "⚙️ Los comandos administrativos requieren permisos de Administrador."
+    )
+    .setFooter({
+      text: "Naruto Bot"
+    });
 
-function adminMenu(userId) {
-  const menu =
-    new StringSelectMenuBuilder()
-      .setCustomId(
-        `admin_category_${userId}`
-      )
-      .setPlaceholder(
-        "🔐 Selecciona una categoría..."
-      )
-      .addOptions(
-        Object.entries(
-          adminCategories
-        ).map(
-          ([key, category]) => ({
-            label:
-              category.name
-                .replace(/[^\p{L}\p{N}\s]/gu, "")
-                .trim(),
-
-            description:
-              `Comandos de ${category.name}`
-                .slice(0, 100),
-
-            value: key
-          })
-        )
-      );
-
-  return [
-    new ActionRowBuilder()
-      .addComponents(menu),
-
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            `public_from_admin_${userId}`
-          )
-          .setLabel(
-            "◀️ Menú público"
-          )
-          .setStyle(
-            ButtonStyle.Secondary
-          )
-      )
+  const components = [
+    createHelpMenu(message.author.id, false)
   ];
-}
 
-function adminCategoryEmbed(key) {
-  const category =
-    adminCategories[key];
-
-  const commands =
-    category.commands
-      .map(
-        ([command, description], index) =>
-          `**${index + 1}.** \`${PREFIX}${command}\` — ${description}`
+  if (isAdmin(message.member)) {
+    const adminButton = new ButtonBuilder()
+      .setCustomId(
+        `openadminhelp_${message.author.id}`
       )
-      .join("\n");
+      .setLabel("Panel de Administración")
+      .setEmoji("⚙️")
+      .setStyle(ButtonStyle.Danger);
 
-  return new EmbedBuilder()
-    .setColor(0xb00000)
-    .setTitle(
-      `${category.name} — ADMIN`
-    )
-    .setDescription(
-      `🔐 **Naruto Administración**\n\n` +
-      `${LINE}\n` +
-      commands
+    components.push(
+      new ActionRowBuilder().addComponents(adminButton)
     );
+  }
+
+  return message.channel.send({
+    embeds: [embed],
+    components
+  });
+}
+
+async function showAdminHelp(message) {
+  if (!isAdmin(message.member)) {
+    return safeReply(
+      message,
+      "❌ Necesitas permisos de Administrador."
+    );
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("⚙️ Naruto — Administración")
+    .setDescription(
+      "Panel de comandos administrativos.\n\n" +
+      "Selecciona una categoría."
+    );
+
+  return message.channel.send({
+    embeds: [embed],
+    components: [
+      createHelpMenu(message.author.id, true)
+    ]
+  });
 }
 
 // ============================================================
-// 🚀 READY
+// 💰 ECONOMÍA
 // ============================================================
 
-client.once(
-  Events.ClientReady,
-  ready => {
-    console.log("");
-    console.log("======================================");
-    console.log("🍥 NARUTO BOT");
-    console.log("======================================");
-    console.log(
-      `🤖 ${ready.user.tag}`
-    );
-    console.log(
-      `🏠 Servidores: ${ready.guilds.cache.size}`
-    );
-    console.log(
-      `📡 Ping: ${ready.ws.ping}ms`
-    );
-    console.log(
-      `⚡ Prefix: ${PREFIX}`
-    );
-    console.log("🟢 CONECTADO");
-    console.log("======================================");
+async function economyCommand(message, command, args) {
+  const user = getUser(message.author.id);
 
-    ready.user.setActivity(
-      `${PREFIX}help • Naruto`
+  const balanceAliases = [
+    "balance",
+    "money",
+    "cash",
+    "wallet",
+    "coins",
+    "mymoney",
+    "wealth",
+    "economy",
+    "funds",
+    "capital",
+    "earnings",
+    "salarycheck",
+    "cashinfo",
+    "balanceinfo",
+    "income"
+  ];
+
+  if (balanceAliases.includes(command)) {
+    return safeReply(
+      message,
+      `💰 **${message.author.username}**\n\n` +
+      `💵 Dinero: **$${user.money}**\n` +
+      `🏦 Banco: **$${user.bank}**\n` +
+      `💎 Total: **$${user.money + user.bank}**`
     );
   }
-);
 
-// ============================================================
-// 💬 MENSAJES
-// ============================================================
-
-client.on(
-  Events.MessageCreate,
-  async message => {
-    try {
-      if (
-        !message.guild ||
-        message.author.bot
-      ) {
-        return;
-      }
-
-      const g =
-        getGuild(
-          message.guild.id
-        );
-
-      // ========================================================
-      // 🔗 ANTILINK
-      // ========================================================
-
-      if (
-        g.antilink.enabled &&
-        !isAdmin(message.member) &&
-        containsLink(message.content)
-      ) {
-        const lower =
-          message.content.toLowerCase();
-
-        const allowed =
-          g.antilink.whitelist.some(
-            domain =>
-              lower.includes(
-                domain.toLowerCase()
-              )
-          );
-
-        if (!allowed) {
-          await message.delete()
-            .catch(() => {});
-
-          if (
-            message.member &&
-            message.member.moderatable
-          ) {
-            await message.member
-              .timeout(
-                2 * 60 * 60 * 1000,
-                "Naruto AntiLink"
-              )
-              .catch(error => {
-                console.error(
-                  "❌ Timeout AntiLink:",
-                  error
-                );
-              });
-          }
-
-          await sendLog(
-            message.guild,
-            embed(
-              "🔗 ANTILINK ACTIVADO",
-              `👤 **Usuario:** ${message.author.tag}\n` +
-              `🗑️ **Mensaje:** Eliminado\n` +
-              `🔇 **Timeout:** 2 horas\n` +
-              `📋 **Motivo:** Enlace no permitido.`,
-              0xff0000
-            )
-          );
-
-          return;
-        }
-      }
-
-      // ========================================================
-      // 📌 SI NO ES COMANDO
-      // ========================================================
-
-      if (
-        !message.content.startsWith(
-          PREFIX
-        )
-      ) {
-        return;
-      }
-
-      const raw =
-        message.content.slice(
-          PREFIX.length
-        ).trim();
-
-      if (!raw) return;
-
-      const args =
-        raw.split(/\s+/);
-
-      const command =
-        args.shift().toLowerCase();
-
-      const user =
-        getUser(
-          message.author.id
-        );
-
-      // ========================================================
-      // ⭐ XP
-      // ========================================================
-
-      const levelUp =
-        addXP(user, 5);
-
-      if (
-        levelUp &&
-        command !== "rank"
-      ) {
-        await message.channel.send(
-          `🎉 ${message.author} **subiste al nivel ${user.level}!** 🏆`
-        ).catch(() => {});
-      }
-
-      // ========================================================
-      // 🆘 HELP
-      // ========================================================
-
-      if (
-        command === "help" ||
-        command === "ayuda"
-      ) {
-        return message.reply({
-          embeds: [
-            mainHelp(
-              message.member
-            )
-          ],
-          components:
-            publicMenu(
-              message.author.id,
-              message.member
-            )
-        });
-      }
-
-      // ========================================================
-      // 🔐 HELP ADMIN
-      // ========================================================
-
-      if (
-        command === "helpadmin"
-      ) {
-        if (
-          !isAdmin(
-            message.member
-          )
-        ) {
-          return message.reply(
-            "❌ Necesitas permisos de Administrador."
-          );
-        }
-
-        return message.reply({
-          embeds: [
-            adminHelp()
-          ],
-          components:
-            adminMenu(
-              message.author.id
-            )
-        });
-      }
-
-      // ========================================================
-      // 💰 BALANCE
-      // ========================================================
-
-      if (
-        command === "balance"
-      ) {
-        return message.reply({
-          embeds: [
-            embed(
-              "💰 TU ECONOMÍA",
-              `👤 ${message.author}\n\n` +
-              `💵 Efectivo: **$${user.money}**\n` +
-              `🏦 Banco: **$${user.bank}**\n` +
-              `💎 Total: **$${user.money + user.bank}**`
-            )
-          ]
-        });
-      }
-
-      // ========================================================
-      // 🎁 DAILY
-      // ========================================================
-
-      if (
-        command === "daily"
-      ) {
-        const now =
-          Date.now();
-
-        const cooldown =
-          24 * 60 * 60 * 1000;
-
-        if (
-          now - user.lastDaily <
-          cooldown
-        ) {
-          const remaining =
-            cooldown -
-            (now - user.lastDaily);
-
-          const hours =
-            Math.ceil(
-              remaining /
-              3600000
-            );
-
-          return message.reply(
-            `⏳ Ya reclamaste tu recompensa.\n` +
-            `🕐 Vuelve en aproximadamente **${hours}h**.`
-          );
-        }
-
-        const reward =
-          Math.floor(
-            Math.random() * 251
-          ) + 250;
-
-        user.money += reward;
-        user.lastDaily = now;
-
-        saveDB();
-
-        return message.reply(
-          `🎁 **DAILY**\n\n` +
-          `💰 Recibiste **$${reward}**.`
-        );
-      }
-
-      // ========================================================
-      // 💼 WORK
-      // ========================================================
-
-      if (
-        command === "work"
-      ) {
-        const now =
-          Date.now();
-
-        if (
-          now - user.lastWork <
-          60 * 60 * 1000
-        ) {
-          return message.reply(
-            "⏳ Debes esperar una hora antes de volver a trabajar."
-          );
-        }
-
-        const reward =
-          Math.floor(
-            Math.random() * 201
-          ) + 100;
-
-        user.money += reward;
-        user.lastWork = now;
-
-        saveDB();
-
-        return message.reply(
-          `💼 Trabajaste y ganaste **$${reward}**.`
-        );
-      }
-
-      // ========================================================
-      // 💸 PAY
-      // ========================================================
-
-      if (
-        command === "pay"
-      ) {
-        const target =
-          message.mentions.users.first();
-
-        const amount =
-          Number(args[1] || args[0]);
-
-        if (
-          !target ||
-          !Number.isFinite(amount) ||
-          amount <= 0
-        ) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}pay @usuario cantidad\``
-          );
-        }
-
-        if (
-          target.id ===
-          message.author.id
-        ) {
-          return message.reply(
-            "❌ No puedes pagarte a ti mismo."
-          );
-        }
-
-        if (
-          amount > user.money
-        ) {
-          return message.reply(
-            "❌ No tienes suficiente dinero."
-          );
-        }
-
-        const targetUser =
-          getUser(target.id);
-
-        user.money -=
-          Math.floor(amount);
-
-        targetUser.money +=
-          Math.floor(amount);
-
-        saveDB();
-
-        return message.reply(
-          `💸 Enviaste **$${amount}** a ${target}.`
-        );
-      }
-
-      // ========================================================
-      // 🏦 DEPOSIT
-      // ========================================================
-
-      if (
-        command === "deposit"
-      ) {
-        const amount =
-          Number(args[0]);
-
-        if (
-          !Number.isFinite(amount) ||
-          amount <= 0 ||
-          amount > user.money
-        ) {
-          return message.reply(
-            `❌ Usa una cantidad válida.\nEjemplo: \`${PREFIX}deposit 500\``
-          );
-        }
-
-        user.money -=
-          Math.floor(amount);
-
-        user.bank +=
-          Math.floor(amount);
-
-        saveDB();
-
-        return message.reply(
-          `🏦 Depositaste **$${amount}**.`
-        );
-      }
-
-      // ========================================================
-      // 💵 WITHDRAW
-      // ========================================================
-
-      if (
-        command === "withdraw"
-      ) {
-        const amount =
-          Number(args[0]);
-
-        if (
-          !Number.isFinite(amount) ||
-          amount <= 0 ||
-          amount > user.bank
-        ) {
-          return message.reply(
-            `❌ Usa una cantidad válida.\nEjemplo: \`${PREFIX}withdraw 500\``
-          );
-        }
-
-        user.bank -=
-          Math.floor(amount);
-
-        user.money +=
-          Math.floor(amount);
-
-        saveDB();
-
-        return message.reply(
-          `💵 Retiraste **$${amount}**.`
-        );
-      }
-
-      // ========================================================
-      // 🏆 RANK
-      // ========================================================
-
-      if (
-        [
-          "rank",
-          "level"
-        ].includes(command)
-      ) {
-        const needed =
-          user.level * 100;
-
-        const text =
-          getRankText(
-            g,
-            user,
-            message.author
-          );
-
-        const percentage =
-          Math.min(
-            100,
-            Math.floor(
-              user.xp /
-              needed *
-              100
-            )
-          );
-
-        const blocks =
-          Math.floor(
-            percentage / 10
-          );
-
-        const bar =
-          "🟧".repeat(blocks) +
-          "⬛".repeat(
-            10 - blocks
-          );
-
-        return message.reply({
-          embeds: [
-            embed(
-              `🏆 RANK — NIVEL ${user.level}`,
-              `${text}\n\n` +
-              `${bar} **${percentage}%**`
-            )
-          ]
-        });
-      }
-
-      // ========================================================
-      // ⭐ XP
-      // ========================================================
-
-      if (
-        command === "xp"
-      ) {
-        return message.reply(
-          `⭐ ${message.author} tiene **${user.xp}/${user.level * 100} XP**.`
-        );
-      }
-
-      // ========================================================
-      // 📊 LEADERBOARD
-      // ========================================================
-
-      if (
-        command === "leaderboard"
-      ) {
-        const users =
-          Object.entries(db.users)
-            .sort(
-              (a, b) =>
-                (b[1].level * 100 + b[1].xp) -
-                (a[1].level * 100 + a[1].xp)
-            )
-            .slice(0, 10);
-
-        let text =
-          "🏆 **TOP 10 NINJAS**\n\n";
-
-        users.forEach(
-          ([id, data], index) => {
-            text +=
-              `**${index + 1}.** <@${id}> — ` +
-              `Nivel **${data.level}** — ` +
-              `⭐ ${data.xp} XP\n`;
-          }
-        );
-
-        return replyLong(
-          message,
-          text
-        );
-      }
-
-      // ========================================================
-      // 📈 LEVELS
-      // ========================================================
-
-      if (
-        command === "levels"
-      ) {
-        return message.reply(
-          `🏆 **SISTEMA DE NIVELES**\n\n` +
-          `⭐ Cada mensaje/comando puede darte XP.\n` +
-          `📈 Cada nivel necesita más XP.\n\n` +
-          `Tu nivel actual: **${user.level}**`
-        );
-      }
-
-      // ========================================================
-      // 👤 PROFILE
-      // ========================================================
-
-      if (
-        command === "profile"
-      ) {
-        const target =
-          message.mentions.users.first() ||
-          message.author;
-
-        const targetUser =
-          getUser(target.id);
-
-        return message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xff6b00)
-              .setTitle(
-                `👤 Perfil de ${target.username}`
-              )
-              .setThumbnail(
-                target.displayAvatarURL({
-                  size: 512
-                })
-              )
-              .setDescription(
-                `💰 Dinero: **$${targetUser.money}**\n` +
-                `🏦 Banco: **$${targetUser.bank}**\n` +
-                `🏆 Nivel: **${targetUser.level}**\n` +
-                `⭐ XP: **${targetUser.xp}**\n` +
-                `❤️ Reputación: **${targetUser.reps}**\n\n` +
-                `📝 ${targetUser.bio}`
-              )
-          ]
-        });
-      }
-
-      // ========================================================
-      // 🖼️ AVATAR
-      // ========================================================
-
-      if (
-        command === "avatar"
-      ) {
-        const target =
-          message.mentions.users.first() ||
-          message.author;
-
-        return message.reply(
-          target.displayAvatarURL({
-            size: 1024,
-            extension: "png"
-          })
-        );
-      }
-
-      // ========================================================
-      // ℹ️ USERINFO
-      // ========================================================
-
-      if (
-        command === "userinfo"
-      ) {
-        const target =
-          message.mentions.users.first() ||
-          message.author;
-
-        const member =
-          message.guild.members.cache.get(
-            target.id
-          );
-
-        return message.reply({
-          embeds: [
-            embed(
-              `👤 ${target.tag}`,
-              `🆔 ID: \`${target.id}\`\n` +
-              `🤖 Bot: **${target.bot ? "Sí" : "No"}**\n` +
-              `📅 Cuenta: <t:${Math.floor(target.createdTimestamp / 1000)}:F>\n` +
-              `📥 Entrada: ${
-                member?.joinedTimestamp
-                  ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>`
-                  : "Desconocida"
-              }`
-            )
-          ]
-        });
-      }
-
-      // ========================================================
-      // 📝 BIO
-      // ========================================================
-
-      if (
-        command === "bio"
-      ) {
-        return message.reply(
-          `📝 **Biografía de ${message.author.username}:**\n${user.bio}`
-        );
-      }
-
-      // ========================================================
-      // ✏️ SETBIO
-      // ========================================================
-
-      if (
-        command === "setbio"
-      ) {
-        const text =
-          args.join(" ");
-
-        if (!text) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}setbio <texto>\``
-          );
-        }
-
-        if (
-          text.length > 300
-        ) {
-          return message.reply(
-            "❌ Máximo 300 caracteres."
-          );
-        }
-
-        user.bio = text;
-
-        saveDB();
-
-        return message.reply(
-          "✅ Biografía actualizada."
-        );
-      }
-
-      // ========================================================
-      // 🏠 SERVERINFO
-      // ========================================================
-
-      if (
-        command === "serverinfo"
-      ) {
-        return message.reply({
-          embeds: [
-            embed(
-              `🏠 ${message.guild.name}`,
-              `🆔 ID: \`${message.guild.id}\`\n` +
-              `👥 Miembros: **${message.guild.memberCount}**\n` +
-              `🎭 Roles: **${message.guild.roles.cache.size}**\n` +
-              `💬 Canales: **${message.guild.channels.cache.size}**\n` +
-              `🚀 Boosts: **${message.guild.premiumSubscriptionCount || 0}**\n` +
-              `👑 Owner: <@${message.guild.ownerId}>`
-            )
-          ]
-        });
-      }
-
-      // ========================================================
-      // 🖼️ SERVER ICON
-      // ========================================================
-
-      if (
-        command === "servericon"
-      ) {
-        const icon =
-          message.guild.iconURL({
-            size: 2048
-          });
-
-        return message.reply(
-          icon ||
-          "❌ Este servidor no tiene icono."
-        );
-      }
-
-      // ========================================================
-      // 🎭 ROLES
-      // ========================================================
-
-      if (
-        command === "roles"
-      ) {
-        const roles =
-          message.guild.roles.cache
-            .filter(
-              role =>
-                role.id !==
-                message.guild.id
-            )
-            .map(
-              role =>
-                `${role} — ${role.members.size} miembros`
-            );
-
-        return replyLong(
-          message,
-          `🎭 **ROLES DEL SERVIDOR**\n\n` +
-          roles.join("\n")
-        );
-      }
-
-      // ========================================================
-      // 💬 CHANNELS
-      // ========================================================
-
-      if (
-        command === "channels"
-      ) {
-        const channels =
-          message.guild.channels.cache
-            .map(
-              channel =>
-                `💬 ${channel.name}`
-            );
-
-        return replyLong(
-          message,
-          `💬 **CANALES**\n\n` +
-          channels.join("\n")
-        );
-      }
-
-      // ========================================================
-      // 🏓 PING
-      // ========================================================
-
-      if (
-        command === "ping"
-      ) {
-        return message.reply(
-          `🏓 **PONG!**\n📡 Ping: **${client.ws.ping}ms**`
-        );
-      }
-
-      // ========================================================
-      // 🎱 8BALL
-      // ========================================================
-
-      if (
-        command === "8ball"
-      ) {
-        const answers = [
-          "🟢 Sí.",
-          "🔴 No.",
-          "🟡 Tal vez.",
-          "🔵 Probablemente.",
-          "🟣 No estoy seguro."
-        ];
-
-        return message.reply(
-          `🎱 ${answers[Math.floor(Math.random() * answers.length)]}`
-        );
-      }
-
-      // ========================================================
-      // 🎲 DICE
-      // ========================================================
-
-      if (
-        command === "dice"
-      ) {
-        return message.reply(
-          `🎲 Salió **${
-            Math.floor(
-              Math.random() * 6
-            ) + 1
-          }**`
-        );
-      }
-
-      // ========================================================
-      // 🪙 COINFLIP
-      // ========================================================
-
-      if (
-        command === "coinflip"
-      ) {
-        return message.reply(
-          Math.random() < 0.5
-            ? "🪙 **Cara**"
-            : "🪙 **Cruz**"
-        );
-      }
-
-      // ========================================================
-      // ✂️ RPS
-      // ========================================================
-
-      if (
-        command === "rps"
-      ) {
-        const options = [
-          "🪨 Piedra",
-          "📄 Papel",
-          "✂️ Tijera"
-        ];
-
-        return message.reply(
-          `✂️ Naruto eligió **${
-            options[
-              Math.floor(
-                Math.random() *
-                options.length
-              )
-            ]
-          }**`
-        );
-      }
-
-      // ========================================================
-      // 🎯 CHOOSE
-      // ========================================================
-
-      if (
-        command === "choose"
-      ) {
-        const choices =
-          args.join(" ")
-            .split("|")
-            .map(
-              x => x.trim()
-            )
-            .filter(Boolean);
-
-        if (
-          choices.length < 2
-        ) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}choose opción 1 | opción 2\``
-          );
-        }
-
-        return message.reply(
-          `🎯 Naruto eligió: **${
-            choices[
-              Math.floor(
-                Math.random() *
-                choices.length
-              )
-            ]
-          }**`
-        );
-      }
-
-      // ========================================================
-      // 🛒 SHOP
-      // ========================================================
-
-      if (
-        [
-          "shop",
-          "productos"
-        ].includes(command)
-      ) {
-        const products =
-          Object.entries(
-            g.shop.roles
-          );
-
-        if (!products.length) {
-          return message.reply(
-            "🛒 La tienda está vacía."
-          );
-        }
-
-        const rows = [];
-
-        for (
-          const [roleId, product]
-          of products
-        ) {
-          const role =
-            message.guild.roles.cache.get(
-              roleId
-            );
-
-          if (!role) continue;
-
-          const shopEmbed =
-            new EmbedBuilder()
-              .setColor(
-                role.color || 0xff6b00
-              )
-              .setTitle(
-                `🛒 ${role.name}`
-              )
-              .setDescription(
-                `🎭 **Rol:** ${role}\n` +
-                `💰 **Precio:** $${product.price}\n\n` +
-                `Pulsa el botón para comprarlo.`
-              );
-
-          const button =
-            new ButtonBuilder()
-              .setCustomId(
-                `shop_buy_${role.id}`
-              )
-              .setLabel(
-                "🛒 Comprar"
-              )
-              .setStyle(
-                ButtonStyle.Success
-              );
-
-          rows.push({
-            embeds: [shopEmbed],
-            components: [
-              new ActionRowBuilder()
-                .addComponents(
-                  button
-                )
-            ]
-          });
-        }
-
-        // Discord no permite enviar múltiples mensajes
-        // con reply en un solo objeto, por eso se envían uno por uno.
-
-        await message.reply(
-          `╔══════════════════════════╗\n` +
-          `║ 🛒 **TIENDA DE NARUTO**\n` +
-          `╚══════════════════════════╝\n\n` +
-          `👇 Selecciona el producto que quieras comprar.`
-        );
-
-        for (
-          const row of rows
-        ) {
-          await message.channel.send(
-            row
-          );
-        }
-
-        return;
-      }
-
-      // ========================================================
-      // 🛒 COMPRAR DIRECTAMENTE
-      // ========================================================
-
-      if (
-        command === "comprar"
-      ) {
-        const role =
-          message.mentions.roles.first();
-
-        if (!role) {
-          return message.reply(
-            `❌ Usa el botón 🛒 Comprar de \`${PREFIX}shop\` o menciona un rol.`
-          );
-        }
-
-        return buyRole(
-          message.member,
-          role,
-          g,
-          message
-        );
-      }
-
-      // ========================================================
-      // 🎒 INVENTORY
-      // ========================================================
-
-      if (
-        [
-          "inventory",
-          "owned"
-        ].includes(command)
-      ) {
-        const owned =
-          Object.keys(
-            g.shop.roles
-          )
-            .map(
-              id =>
-                message.guild.roles.cache.get(id)
-            )
-            .filter(
-              role =>
-                role &&
-                message.member.roles.cache.has(
-                  role.id
-                )
-            );
-
-        if (!owned.length) {
-          return message.reply(
-            "🎒 No tienes roles comprados."
-          );
-        }
-
-        return message.reply(
-          `🎒 **TU INVENTARIO**\n\n` +
-          owned.join("\n")
-        );
-      }
-
-      // ========================================================
-      // 🔐 COMANDOS ADMIN
-      // ========================================================
-
-      const adminCommands = [
-        "ban",
-        "kick",
-        "timeout",
-        "untimeout",
-        "warn",
-        "clear",
-        "antilink",
-        "antiraid",
-        "antinuke",
-        "whitelist",
-        "setlogs",
-        "security",
-        "welcome",
-        "autorole",
-        "setranktext",
-        "settings",
-        "testlogs",
-        "disablelogs"
-      ];
-
-      if (
-        adminCommands.includes(
-          command
-        ) &&
-        !isAdmin(
-          message.member
-        )
-      ) {
-        return message.reply(
-          "❌ Necesitas permisos de **Administrador**."
-        );
-      }
-
-      // ========================================================
-      // 🔗 ANTILINK CONFIG
-      // ========================================================
-
-      if (
-        command === "antilink"
-      ) {
-        const option =
-          args[0]?.toLowerCase();
-
-        if (
-          option === "on"
-        ) {
-          g.antilink.enabled =
-            true;
-
-          saveDB();
-
-          return message.reply(
-            `🔗 **ANTILINK ACTIVADO**\n\n` +
-            `🗑️ Link enviado → mensaje eliminado\n` +
-            `🔇 Usuario → timeout de **2 horas**`
-          );
-        }
-
-        if (
-          option === "off"
-        ) {
-          g.antilink.enabled =
-            false;
-
-          saveDB();
-
-          return message.reply(
-            "🔗 **ANTILINK DESACTIVADO**."
-          );
-        }
-
-        if (
-          option === "add"
-        ) {
-          const domain =
-            args[1];
-
-          if (!domain) {
-            return message.reply(
-              `❌ Usa: \`${PREFIX}antilink add discord.com\``
-            );
-          }
-
-          if (
-            !g.antilink.whitelist.includes(
-              domain
-            )
-          ) {
-            g.antilink.whitelist.push(
-              domain
-            );
-          }
-
-          saveDB();
-
-          return message.reply(
-            `✅ **${domain}** añadido a la whitelist de links.`
-          );
-        }
-
-        if (
-          option === "remove"
-        ) {
-          const domain =
-            args[1];
-
-          g.antilink.whitelist =
-            g.antilink.whitelist.filter(
-              x =>
-                x !== domain
-            );
-
-          saveDB();
-
-          return message.reply(
-            `✅ **${domain}** eliminado de la whitelist.`
-          );
-        }
-
-        return message.reply(
-          `🔗 **ANTILINK**\n\n` +
-          `Estado: **${g.antilink.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-          `⏱️ Timeout: **2 horas**\n\n` +
-          `\`${PREFIX}antilink on\`\n` +
-          `\`${PREFIX}antilink off\`\n` +
-          `\`${PREFIX}antilink add <dominio>\`\n` +
-          `\`${PREFIX}antilink remove <dominio>\``
-        );
-      }
-
-      // ========================================================
-      // 🤖 ANTIRAID
-      // ========================================================
-
-      if (
-        command === "antiraid"
-      ) {
-        const option =
-          args[0]?.toLowerCase();
-
-        if (
-          option === "on"
-        ) {
-          g.antiraid.enabled =
-            true;
-
-          saveDB();
-
-          return message.reply(
-            `🤖 **ANTIRAID ACTIVADO**\n\n` +
-            `🚨 Bot no autorizado → **BAN PERMANENTE**`
-          );
-        }
-
-        if (
-          option === "off"
-        ) {
-          g.antiraid.enabled =
-            false;
-
-          saveDB();
-
-          return message.reply(
-            "🤖 **ANTIRAID DESACTIVADO**."
-          );
-        }
-
-        if (
-          option === "add"
-        ) {
-          const bot =
-            message.mentions.users.first();
-
-          const id =
-            bot?.id ||
-            args[1];
-
-          if (!id) {
-            return message.reply(
-              `❌ Usa: \`${PREFIX}antiraid add @bot\``
-            );
-          }
-
-          if (
-            !g.antiraid.botWhitelist.includes(
-              id
-            )
-          ) {
-            g.antiraid.botWhitelist.push(
-              id
-            );
-          }
-
-          saveDB();
-
-          return message.reply(
-            `✅ Bot \`${id}\` añadido a la whitelist.`
-          );
-        }
-
-        if (
-          option === "remove"
-        ) {
-          const bot =
-            message.mentions.users.first();
-
-          const id =
-            bot?.id ||
-            args[1];
-
-          g.antiraid.botWhitelist =
-            g.antiraid.botWhitelist.filter(
-              x => x !== id
-            );
-
-          saveDB();
-
-          return message.reply(
-            `✅ Bot \`${id}\` eliminado de la whitelist.`
-          );
-        }
-
-        return message.reply(
-          `🤖 **ANTIRAID**\n\n` +
-          `Estado: **${g.antiraid.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-          `🤖 Bots permitidos: **${g.antiraid.botWhitelist.length}**\n\n` +
-          `\`${PREFIX}antiraid on\`\n` +
-          `\`${PREFIX}antiraid off\`\n` +
-          `\`${PREFIX}antiraid add @bot\`\n` +
-          `\`${PREFIX}antiraid remove @bot\``
-        );
-      }
-
-      // ========================================================
-      // 🛡️ ANTI-NUKE
-      // ========================================================
-
-      if (
-        command === "antinuke"
-      ) {
-        const option =
-          args[0]?.toLowerCase();
-
-        if (
-          option === "on"
-        ) {
-          g.antinuke.enabled =
-            true;
-
-          saveDB();
-
-          return message.reply(
-            `🛡️ **ANTI-NUKE ACTIVADO**\n\n` +
-            `📁 Crear/eliminar canales sin whitelist → **KICK**\n` +
-            `🎭 Crear/eliminar roles sin whitelist → **KICK**`
-          );
-        }
-
-        if (
-          option === "off"
-        ) {
-          g.antinuke.enabled =
-            false;
-
-          saveDB();
-
-          return message.reply(
-            "🛡️ **ANTI-NUKE DESACTIVADO**."
-          );
-        }
-
-        return message.reply(
-          `🛡️ **ANTI-NUKE**\n\n` +
-          `Estado: **${g.antinuke.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-          `📁 Canales: **${g.antinuke.protectChannels ? "🟢" : "🔴"}**\n` +
-          `🎭 Roles: **${g.antinuke.protectRoles ? "🟢" : "🔴"}**\n\n` +
-          `Whitelist de usuarios: **${g.antinuke.whitelistUsers.length}**\n` +
-          `Whitelist de roles: **${g.antinuke.whitelistRoles.length}**`
-        );
-      }
-
-      // ========================================================
-      // 🔐 WHITELIST
-      // ========================================================
-
-      if (
-        command === "whitelist"
-      ) {
-        const type =
-          args[0]?.toLowerCase();
-
-        if (
-          type === "user"
-        ) {
-          const member =
-            message.mentions.members.first();
-
-          if (!member) {
-            return message.reply(
-              `❌ Usa: \`${PREFIX}whitelist user @usuario\``
-            );
-          }
-
-          if (
-            !g.antinuke.whitelistUsers.includes(
-              member.id
-            )
-          ) {
-            g.antinuke.whitelistUsers.push(
-              member.id
-            );
-          }
-
-          saveDB();
-
-          return message.reply(
-            `✅ ${member} añadido a la whitelist Anti-Nuke.`
-          );
-        }
-
-        if (
-          type === "role"
-        ) {
-          const role =
-            message.mentions.roles.first();
-
-          if (!role) {
-            return message.reply(
-              `❌ Usa: \`${PREFIX}whitelist role @rol\``
-            );
-          }
-
-          if (
-            !g.antinuke.whitelistRoles.includes(
-              role.id
-            )
-          ) {
-            g.antinuke.whitelistRoles.push(
-              role.id
-            );
-          }
-
-          saveDB();
-
-          return message.reply(
-            `✅ ${role} añadido a la whitelist Anti-Nuke.`
-          );
-        }
-
-        return message.reply(
-          `🔐 **WHITELIST**\n\n` +
-          `👤 Usuarios: **${g.antinuke.whitelistUsers.length}**\n` +
-          `🎭 Roles: **${g.antinuke.whitelistRoles.length}**\n` +
-          `🤖 Bots: **${g.antiraid.botWhitelist.length}**`
-        );
-      }
-
-      // ========================================================
-      // 🔨 BAN
-      // ========================================================
-
-      if (
-        command === "ban"
-      ) {
-        const member =
-          message.mentions.members.first();
-
-        if (!member) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}ban @usuario\``
-          );
-        }
-
-        if (!member.bannable) {
-          return message.reply(
-            "❌ No puedo banear a ese usuario."
-          );
-        }
-
-        await member.ban({
-          reason:
-            args.slice(1).join(" ") ||
-            "Naruto Ban"
-        });
-
-        return message.reply(
-          `🔨 ${member.user.tag} fue baneado permanentemente.`
-        );
-      }
-
-      // ========================================================
-      // 👢 KICK
-      // ========================================================
-
-      if (
-        command === "kick"
-      ) {
-        const member =
-          message.mentions.members.first();
-
-        if (!member) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}kick @usuario\``
-          );
-        }
-
-        if (!member.kickable) {
-          return message.reply(
-            "❌ No puedo expulsar a ese usuario."
-          );
-        }
-
-        await member.kick(
-          args.slice(1).join(" ") ||
-          "Naruto Kick"
-        );
-
-        return message.reply(
-          `👢 ${member.user.tag} fue expulsado.`
-        );
-      }
-
-      // ========================================================
-      // 🔇 TIMEOUT
-      // ========================================================
-
-      if (
-        command === "timeout"
-      ) {
-        const member =
-          message.mentions.members.first();
-
-        const minutes =
-          Number(args[1]) || 10;
-
-        if (!member) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}timeout @usuario minutos\``
-          );
-        }
-
-        if (!member.moderatable) {
-          return message.reply(
-            "❌ No puedo aplicar timeout."
-          );
-        }
-
-        await member.timeout(
-          Math.min(
-            minutes * 60000,
-            28 * 24 * 60 * 60000
-          ),
-          "Naruto Timeout"
-        );
-
-        return message.reply(
-          `🔇 ${member.user.tag} recibió **${minutes} minutos** de timeout.`
-        );
-      }
-
-      // ========================================================
-      // 🔊 UNTIMEOUT
-      // ========================================================
-
-      if (
-        command === "untimeout"
-      ) {
-        const member =
-          message.mentions.members.first();
-
-        if (!member) {
-          return message.reply(
-            "❌ Menciona un usuario."
-          );
-        }
-
-        await member.timeout(
-          null,
-          "Naruto UnTimeout"
-        );
-
-        return message.reply(
-          `🔊 Timeout retirado a ${member.user.tag}.`
-        );
-      }
-
-      // ========================================================
-      // ⚠️ WARN
-      // ========================================================
-
-      if (
-        command === "warn"
-      ) {
-        const member =
-          message.mentions.members.first();
-
-        if (!member) {
-          return message.reply(
-            "❌ Menciona un usuario."
-          );
-        }
-
-        const target =
-          getUser(member.id);
-
-        target.warnings++;
-
-        saveDB();
-
-        return message.reply(
-          `⚠️ ${member} recibió una advertencia.\n` +
-          `📊 Total: **${target.warnings}**`
-        );
-      }
-
-      // ========================================================
-      // 🧹 CLEAR
-      // ========================================================
-
-      if (
-        command === "clear"
-      ) {
-        const amount =
-          Math.min(
-            Math.max(
-              Number(args[0]) || 10,
-              1
-            ),
-            100
-          );
-
-        const deleted =
-          await message.channel
-            .bulkDelete(
-              amount,
-              true
-            )
-            .catch(() => null);
-
-        return message.channel.send(
-          `🧹 Eliminados **${deleted?.size || 0} mensajes**.`
-        );
-      }
-
-      // ========================================================
-      // 📝 SETLOGS
-      // ========================================================
-
-      if (
-        command === "setlogs"
-      ) {
-        const channel =
-          message.mentions.channels.first();
-
-        if (!channel) {
-          return message.reply(
-            `❌ Usa: \`${PREFIX}setlogs #canal\``
-          );
-        }
-
-        g.logsChannel =
-          channel.id;
-
-        saveDB();
-
-        return message.reply(
-          `📝 Logs configurados en ${channel}.`
-        );
-      }
-
-      // ========================================================
-      // ❌ DISABLE LOGS
-      // ========================================================
-
-      if (
-        command === "disablelogs"
-      ) {
-        g.logsChannel = null;
-
-        saveDB();
-
-        return message.reply(
-          "📝 Logs desactivados."
-        );
-      }
-
-      // ========================================================
-      // 🧪 TEST LOGS
-      // ========================================================
-
-      if (
-        command === "testlogs"
-      ) {
-        await sendLog(
-          message.guild,
-          embed(
-            "🧪 TEST DE LOGS",
-            "✅ Los logs funcionan correctamente.",
-            0x00ff00
-          )
-        );
-
-        return message.reply(
-          "🧪 Log de prueba enviado."
-        );
-      }
-
-      // ========================================================
-      // 👋 WELCOME
-      // ========================================================
-
-      if (
-        command === "welcome"
-      ) {
-        const option =
-          args[0]?.toLowerCase();
-
-        if (
-          option === "on"
-        ) {
-          g.welcome.enabled =
-            true;
-
-          saveDB();
-
-          return message.reply(
-            "👋 Bienvenida activada."
-          );
-        }
-
-        if (
-          option === "off"
-        ) {
-          g.welcome.enabled =
-            false;
-
-          saveDB();
-
-          return message.reply(
-            "👋 Bienvenida desactivada."
-          );
-        }
-
-        if (
-          option === "channel"
-        ) {
-          const channel =
-            message.mentions.channels.first();
-
-          if (!channel) {
-            return message.reply(
-              "❌ Menciona un canal."
-            );
-          }
-
-          g.welcome.channel =
-            channel.id;
-
-          saveDB();
-
-          return message.reply(
-            `👋 Canal de bienvenida: ${channel}`
-          );
-        }
-
-        return message.reply(
-          `👋 Estado: **${g.welcome.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-          `📢 Canal: ${
-            g.welcome.channel
-              ? `<#${g.welcome.channel}>`
-              : "No configurado"
-          }`
-        );
-      }
-
-      // ========================================================
-      // 🎭 AUTOROLE
-      // ========================================================
-
-      if (
-        command === "autorole"
-      ) {
-        const option =
-          args[0]?.toLowerCase();
-
-        if (
-          option === "on"
-        ) {
-          g.autorole.enabled =
-            true;
-
-          saveDB();
-
-          return message.reply(
-            "🎭 Autorole activado."
-          );
-        }
-
-        if (
-          option === "off"
-        ) {
-          g.autorole.enabled =
-            false;
-
-          saveDB();
-
-          return message.reply(
-            "🎭 Autorole desactivado."
-          );
-        }
-
-        if (
-          option === "set"
-        ) {
-          const role =
-            message.mentions.roles.first();
-
-          if (!role) {
-            return message.reply(
-              `❌ Usa: \`${PREFIX}autorole set @rol\``
-            );
-          }
-
-          g.autorole.role =
-            role.id;
-
-          saveDB();
-
-          return message.reply(
-            `🎭 Autorole configurado: ${role}`
-          );
-        }
-
-        return message.reply(
-          `🎭 **AUTOROLE**\n\n` +
-          `Estado: **${g.autorole.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-          `Rol: ${
-            g.autorole.role
-              ? `<@&${g.autorole.role}>`
-              : "No configurado"
-          }`
-        );
-      }
-
-      // ========================================================
-      // 🏆 SET RANK TEXT
-      // ========================================================
-
-      if (
-        command === "setranktext"
-      ) {
-        const text =
-          args.join(" ");
-
-        if (!text) {
-          return message.reply(
-            `❌ Usa:\n\`${PREFIX}setranktext 🍥 {user}, eres ninja al nivel {level}\``
-          );
-        }
-
-        if (
-          text.length > 1000
-        ) {
-          return message.reply(
-            "❌ El texto no puede superar 1000 caracteres."
-          );
-        }
-
-        g.rank.text =
-          text;
-
-        saveDB();
-
-        return message.reply(
-          `✅ **Texto del Rank cambiado.**\n\n` +
-          `${getRankText(
-            g,
-            user,
-            message.author
-          )}\n\n` +
-          `Variables disponibles:\n` +
-          `\`{user}\` → usuario\n` +
-          `\`{username}\` → nombre\n` +
-          `\`{level}\` → nivel\n` +
-          `\`{xp}\` → XP actual\n` +
-          `\`{needed}\` → XP necesaria`
-        );
-      }
-
-      // ========================================================
-      // ⚙️ SETTINGS / SECURITY
-      // ========================================================
-
-      if (
-        [
-          "settings",
-          "security"
-        ].includes(command)
-      ) {
-        return message.reply({
-          embeds: [
-            embed(
-              "⚙️ CONFIGURACIÓN DE NARUTO",
-              `🔗 AntiLink: **${g.antilink.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-              `🤖 AntiRaid: **${g.antiraid.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-              `🛡️ Anti-Nuke: **${g.antinuke.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-              `👋 Welcome: **${g.welcome.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-              `🎭 Autorole: **${g.autorole.enabled ? "🟢 ON" : "🔴 OFF"}**\n` +
-              `📝 Logs: **${g.logsChannel ? "🟢 ON" : "🔴 OFF"}**\n\n` +
-              `🔐 Usuarios whitelist: **${g.antinuke.whitelistUsers.length}**\n` +
-              `🎭 Roles whitelist: **${g.antinuke.whitelistRoles.length}**\n` +
-              `🤖 Bots whitelist: **${g.antiraid.botWhitelist.length}**`
-            )
-          ]
-        });
-      }
-
-      // ========================================================
-      // ❓ COMANDO DESCONOCIDO
-      // ========================================================
-
-      return message.reply(
-        `❌ No existe \`${PREFIX}${command}\`.\n\n` +
-        `📚 Usa \`${PREFIX}help\` para abrir el menú.`
+  if (command === "daily") {
+    const cooldown = 24 * 60 * 60 * 1000;
+
+    if (
+      Date.now() - user.lastDaily <
+      cooldown
+    ) {
+      const remaining =
+        cooldown -
+        (Date.now() - user.lastDaily);
+
+      const hours = Math.ceil(
+        remaining / (60 * 60 * 1000)
       );
 
-    } catch (error) {
-      console.error(
-        "❌ ERROR:",
-        error
+      return safeReply(
+        message,
+        `⏳ Ya reclamaste tu Daily. Vuelve en aproximadamente **${hours}h**.`
       );
-
-      await message.reply(
-        "❌ Ocurrió un error ejecutando el comando."
-      ).catch(() => {});
     }
+
+    const amount =
+      Math.floor(Math.random() * 201) + 100;
+
+    user.money += amount;
+    user.lastDaily = Date.now();
+
+    saveDB();
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "💰 Daily reclamado",
+        `${message.author} recibió **$${amount}**.`
+      )
+    );
+
+    return safeReply(
+      message,
+      `🎁 Recibiste **$${amount}** de tu recompensa diaria.`
+    );
   }
-);
 
-// ============================================================
-// 🛒 FUNCIÓN COMPRA
-// ============================================================
+  if (
+    ["work", "job", "salary", "paycheck"].includes(
+      command
+    )
+  ) {
+    const cooldown = 60 * 60 * 1000;
 
-async function buyRole(
-  member,
-  role,
-  guildSettings,
-  message
-) {
-  const product =
-    guildSettings.shop.roles[
-      role.id
+    if (
+      Date.now() - user.lastWork <
+      cooldown
+    ) {
+      return safeReply(
+        message,
+        "⏳ Debes esperar antes de volver a trabajar."
+      );
+    }
+
+    const amount =
+      Math.floor(Math.random() * 151) + 50;
+
+    user.money += amount;
+    user.lastWork = Date.now();
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `💼 Trabajaste y ganaste **$${amount}**.`
+    );
+  }
+
+  if (
+    ["pay", "transfer", "give"].includes(command)
+  ) {
+    const target =
+      message.mentions.users.first();
+
+    const amount = Number(args[1]);
+
+    if (!target || !Number.isFinite(amount)) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}pay @usuario cantidad\``
+      );
+    }
+
+    if (target.id === message.author.id) {
+      return safeReply(
+        message,
+        "❌ No puedes enviarte dinero a ti mismo."
+      );
+    }
+
+    if (amount <= 0) {
+      return safeReply(
+        message,
+        "❌ La cantidad debe ser mayor que 0."
+      );
+    }
+
+    if (user.money < amount) {
+      return safeReply(
+        message,
+        "❌ No tienes suficiente dinero."
+      );
+    }
+
+    const receiver = getUser(target.id);
+
+    user.money -= amount;
+    receiver.money += amount;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `💸 Enviaste **$${amount}** a ${target}.`
+    );
+  }
+
+  if (
+    ["deposit", "depositall"].includes(command)
+  ) {
+    let amount;
+
+    if (
+      command === "depositall" ||
+      args[0]?.toLowerCase() === "all"
+    ) {
+      amount = user.money;
+    } else {
+      amount = Number(args[0]);
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}deposit cantidad\``
+      );
+    }
+
+    if (user.money < amount) {
+      return safeReply(
+        message,
+        "❌ No tienes suficiente dinero."
+      );
+    }
+
+    user.money -= amount;
+    user.bank += amount;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `🏦 Depositaste **$${amount}**.`
+    );
+  }
+
+  if (
+    ["withdraw", "withdrawall"].includes(command)
+  ) {
+    let amount;
+
+    if (
+      command === "withdrawall" ||
+      args[0]?.toLowerCase() === "all"
+    ) {
+      amount = user.bank;
+    } else {
+      amount = Number(args[0]);
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}withdraw cantidad\``
+      );
+    }
+
+    if (user.bank < amount) {
+      return safeReply(
+        message,
+        "❌ No tienes suficiente dinero en el banco."
+      );
+    }
+
+    user.bank -= amount;
+    user.money += amount;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `🏧 Retiraste **$${amount}**.`
+    );
+  }
+
+  if (command === "bank") {
+    return safeReply(
+      message,
+      `🏦 Tienes **$${user.bank}** en el banco.`
+    );
+  }
+
+  if (command === "richest") {
+    const list = Object.entries(db.users)
+      .sort(
+        (a, b) =>
+          (b[1].money + b[1].bank) -
+          (a[1].money + a[1].bank)
+      )
+      .slice(0, 10);
+
+    if (!list.length) {
+      return safeReply(
+        message,
+        "📊 Todavía no hay datos."
+      );
+    }
+
+    let text =
+      "👑 **Top 10 más ricos**\n\n";
+
+    list.forEach(([id, data], index) => {
+      text +=
+        `**${index + 1}.** <@${id}> — **$${data.money + data.bank}**\n`;
+    });
+
+    return replyLong(message, text);
+  }
+
+  if (command === "fortune") {
+    const fortunes = [
+      "🍀 Hoy la suerte está de tu lado.",
+      "🥷 Un gran camino ninja te espera.",
+      "💰 Quizás encuentres una recompensa pronto.",
+      "⭐ Sigue ganando XP y podrás subir de nivel.",
+      "🍥 Naruto cree en ti."
     ];
 
-  if (!product) {
-    return message.reply(
-      "❌ Ese rol no está en la tienda."
+    return safeReply(
+      message,
+      fortunes[
+        Math.floor(
+          Math.random() * fortunes.length
+        )
+      ]
     );
   }
-
-  const user =
-    getUser(member.id);
-
-  if (
-    member.roles.cache.has(
-      role.id
-    )
-  ) {
-    return message.reply(
-      "❌ Ya tienes ese rol."
-    );
-  }
-
-  if (
-    user.money <
-    product.price
-  ) {
-    return message.reply(
-      `❌ Necesitas **$${product.price}** y tienes **$${user.money}**.`
-    );
-  }
-
-  if (!role.editable) {
-    return message.reply(
-      "❌ Naruto no puede entregar ese rol. Coloca el rol de Naruto por encima del rol de la tienda."
-    );
-  }
-
-  user.money -=
-    product.price;
-
-  await member.roles.add(
-    role,
-    "Naruto Shop Purchase"
-  );
-
-  saveDB();
-
-  return message.reply(
-    `🎉 **COMPRA REALIZADA**\n\n` +
-    `🛒 Producto: ${role}\n` +
-    `💰 Precio: **$${product.price}**\n` +
-    `💵 Dinero restante: **$${user.money}**`
-  );
 }
 
 // ============================================================
-// 🖱️ INTERACCIONES
+// 🛡️ MODERACIÓN
+// ============================================================
+
+async function moderationCommand(
+  message,
+  command,
+  args
+) {
+  if (!isAdmin(message.member)) {
+    return safeReply(
+      message,
+      "❌ Necesitas permisos de Administrador."
+    );
+  }
+
+  const target =
+    message.mentions.members.first();
+
+  if (
+    ["ban", "kick", "softban", "timeout",
+      "mute", "warn", "jail", "tempban",
+      "tempkick", "voicekick", "deafen",
+      "undeafen"].includes(command) &&
+    !target
+  ) {
+    return safeReply(
+      message,
+      "❌ Debes mencionar a un usuario."
+    );
+  }
+
+  if (
+    ["ban", "softban", "kick", "tempban",
+      "tempkick"].includes(command)
+  ) {
+    if (!target.bannable && command !== "kick" && command !== "tempkick") {
+      return safeReply(
+        message,
+        "❌ No puedo moderar a ese usuario por la jerarquía de roles."
+      );
+    }
+
+    if (
+      !target.kickable &&
+      ["kick", "tempkick"].includes(command)
+    ) {
+      return safeReply(
+        message,
+        "❌ No puedo expulsar a ese usuario."
+      );
+    }
+  }
+
+  if (command === "ban") {
+    await target.ban({
+      reason:
+        args.slice(1).join(" ") ||
+        `Ban ejecutado por ${message.author.tag}`
+    }).catch(() => null);
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "🔨 Usuario baneado",
+        `${target.user} fue baneado por ${message.author}.`
+      )
+    );
+
+    return safeReply(
+      message,
+      `🔨 ${target.user.tag} fue baneado.`
+    );
+  }
+
+  if (command === "unban") {
+    const id = args[0];
+
+    if (!id) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}unban ID\``
+      );
+    }
+
+    await message.guild.members
+      .unban(id)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🔓 Intenté desbanear a **${id}**.`
+    );
+  }
+
+  if (
+    ["kick", "tempkick"].includes(command)
+  ) {
+    await target.kick(
+      args.slice(1).join(" ") ||
+      `Kick ejecutado por ${message.author.tag}`
+    ).catch(() => null);
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "👢 Usuario expulsado",
+        `${target.user} fue expulsado por ${message.author}.`
+      )
+    );
+
+    return safeReply(
+      message,
+      `👢 ${target.user.tag} fue expulsado.`
+    );
+  }
+
+  if (command === "softban") {
+    await target.ban({
+      reason: `Softban por ${message.author.tag}`,
+      deleteMessageSeconds: 24 * 60 * 60
+    }).catch(() => null);
+
+    await message.guild.members
+      .unban(target.id)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🔄 Softban realizado a ${target.user.tag}.`
+    );
+  }
+
+  if (
+    ["timeout", "mute", "jail"].includes(command)
+  ) {
+    const duration =
+      parseDuration(args[1]) ||
+      10 * 60 * 1000;
+
+    await target.timeout(
+      duration,
+      args.slice(2).join(" ") ||
+      `Timeout por ${message.author.tag}`
+    ).catch(() => null);
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "⏱️ Timeout",
+        `${target.user} recibió timeout por ${message.author}.`
+      )
+    );
+
+    return safeReply(
+      message,
+      `⏱️ ${target.user.tag} recibió timeout.`
+    );
+  }
+
+  if (
+    ["untimeout", "unmute", "unjail"].includes(command)
+  ) {
+    await target.timeout(null).catch(() => null);
+
+    return safeReply(
+      message,
+      `🔓 Timeout retirado a ${target.user.tag}.`
+    );
+  }
+
+  if (command === "warn") {
+    const user = getUser(target.id);
+    user.warnings++;
+
+    saveDB();
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "⚠️ Warn",
+        `${target.user} recibió una advertencia de ${message.author}.\nTotal: **${user.warnings}**`
+      )
+    );
+
+    return safeReply(
+      message,
+      `⚠️ ${target.user.tag} recibió un warn. Total: **${user.warnings}**`
+    );
+  }
+
+  if (
+    ["warnings", "warnclear", "unwarn"].includes(command)
+  ) {
+    const member =
+      target ||
+      message.member;
+
+    const user = getUser(member.id);
+
+    if (command === "warnings") {
+      return safeReply(
+        message,
+        `⚠️ ${member.user.tag} tiene **${user.warnings}** warnings.`
+      );
+    }
+
+    user.warnings = 0;
+    saveDB();
+
+    return safeReply(
+      message,
+      `✅ Warnings de ${member.user.tag} limpiados.`
+    );
+  }
+
+  if (
+    ["clear", "purge"].includes(command)
+  ) {
+    const amount =
+      Math.min(
+        Math.max(
+          Number(args[0]) || 10,
+          1
+        ),
+        100
+      );
+
+    const deleted =
+      await message.channel.bulkDelete(
+        amount,
+        true
+      ).catch(() => null);
+
+    return safeReply(
+      message,
+      `🧹 Se eliminaron **${deleted?.size || 0}** mensajes.`
+    );
+  }
+
+  if (command === "lock") {
+    await message.channel.permissionOverwrites.edit(
+      message.guild.roles.everyone,
+      {
+        SendMessages: false
+      }
+    );
+
+    return safeReply(
+      message,
+      "🔒 Canal bloqueado."
+    );
+  }
+
+  if (command === "unlock") {
+    await message.channel.permissionOverwrites.edit(
+      message.guild.roles.everyone,
+      {
+        SendMessages: null
+      }
+    );
+
+    return safeReply(
+      message,
+      "🔓 Canal desbloqueado."
+    );
+  }
+
+  if (command === "slowmode") {
+    const seconds =
+      Math.max(
+        0,
+        Math.min(
+          Number(args[0]) || 0,
+          21600
+        )
+      );
+
+    await message.channel.setRateLimitPerUser(
+      seconds
+    );
+
+    return safeReply(
+      message,
+      `🐌 Slowmode establecido en **${seconds}s**.`
+    );
+  }
+
+  if (command === "nick") {
+    if (!target) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}nick @usuario nuevo nombre\``
+      );
+    }
+
+    const nickname =
+      args.slice(1).join(" ");
+
+    await target.setNickname(
+      nickname || null
+    ).catch(() => null);
+
+    return safeReply(
+      message,
+      "✏️ Nickname actualizado."
+    );
+  }
+
+  if (command === "resetnick") {
+    const member =
+      target || message.member;
+
+    await member.setNickname(null)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      "🔄 Nickname reiniciado."
+    );
+  }
+
+  if (command === "voicekick") {
+    if (!target.voice.channel) {
+      return safeReply(
+        message,
+        "❌ Ese usuario no está en un canal de voz."
+      );
+    }
+
+    await target.voice.disconnect()
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🔊 ${target.user.tag} fue desconectado del canal de voz.`
+    );
+  }
+
+  if (command === "deafen") {
+    await target.voice.setDeaf(true)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🔇 ${target.user.tag} fue ensordecido.`
+    );
+  }
+
+  if (command === "undeafen") {
+    await target.voice.setDeaf(false)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🔊 Se quitó el deaf a ${target.user.tag}.`
+    );
+  }
+
+  if (
+    ["modlog", "reason", "modstats"].includes(command)
+  ) {
+    const guildData =
+      getGuild(message.guild.id);
+
+    return safeReply(
+      message,
+      `🛡️ **Moderación**\n\n` +
+      `📜 Canal de logs: ${
+        guildData.logsChannel
+          ? `<#${guildData.logsChannel}>`
+          : "No configurado"
+      }\n⚠️ Warns guardados: activos\n🔨 Moderación: activa`
+    );
+  }
+
+  if (command === "massban") {
+    const users =
+      message.mentions.users;
+
+    if (!users.size) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}massban @usuario1 @usuario2\``
+      );
+    }
+
+    let count = 0;
+
+    for (const user of users.values()) {
+      await message.guild.members
+        .ban(user.id, {
+          reason: `Massban por ${message.author.tag}`
+        })
+        .then(() => count++)
+        .catch(() => {});
+    }
+
+    return safeReply(
+      message,
+      `🔨 Massban completado: **${count}** usuarios.`
+    );
+  }
+
+  if (command === "tempban") {
+    const duration =
+      parseDuration(args[1]);
+
+    if (!duration) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}tempban @usuario 10m\``
+      );
+    }
+
+    await target.ban({
+      reason: `Tempban por ${message.author.tag}`
+    }).catch(() => null);
+
+    setTimeout(() => {
+      message.guild.members
+        .unban(target.id)
+        .catch(() => {});
+    }, duration);
+
+    return safeReply(
+      message,
+      `⏱️ ${target.user.tag} fue baneado temporalmente.`
+    );
+  }
+}
+
+// ============================================================
+// 🛒 SHOP COMMANDS
+// ============================================================
+
+async function shopCommand(
+  message,
+  command,
+  args
+) {
+  const shopAliases = [
+    "shop",
+    "tienda",
+    "nshop",
+    "store",
+    "market",
+    "marketplace",
+    "productos",
+    "catalogo",
+    "precios",
+    "shoplist",
+    "shopinfo",
+    "items",
+    "item",
+    "productlist",
+    "shopmenu",
+    "shopping"
+  ];
+
+  if (shopAliases.includes(command)) {
+    return showShop(message);
+  }
+
+  if (
+    ["comprar", "buy", "purchase"].includes(command)
+  ) {
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}buy @rol\``
+      );
+    }
+
+    const guildData =
+      getGuild(message.guild.id);
+
+    const price =
+      guildData.shop.roles[role.id];
+
+    if (price === undefined) {
+      return safeReply(
+        message,
+        "❌ Ese rol no está en la Shop."
+      );
+    }
+
+    const user =
+      getUser(message.author.id);
+
+    if (user.money < price) {
+      return safeReply(
+        message,
+        `❌ Necesitas **$${price}**. Tienes **$${user.money}**.`
+      );
+    }
+
+    if (
+      message.member.roles.cache.has(
+        role.id
+      )
+    ) {
+      return safeReply(
+        message,
+        "❌ Ya tienes ese rol."
+      );
+    }
+
+    if (!role.editable) {
+      return safeReply(
+        message,
+        "❌ Naruto no puede entregar ese rol. Pon el rol de Naruto por encima."
+      );
+    }
+
+    user.money -= price;
+
+    await message.member.roles
+      .add(role)
+      .catch(() => null);
+
+    saveDB();
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "🛒 Compra realizada",
+        `${message.author} compró ${role} por **$${price}**.`
+      )
+    );
+
+    return safeReply(
+      message,
+      `🛒 Compraste ${role} por **$${price}**.`
+    );
+  }
+
+  if (
+    ["myroles", "owned", "inventory", "inv"].includes(
+      command
+    )
+  ) {
+    const roles =
+      message.member.roles.cache
+        .filter(role => role.id !== message.guild.id)
+        .map(role => role.name);
+
+    return replyLong(
+      message,
+      `🎭 **Tus roles**\n\n${
+        roles.length
+          ? roles.map(r => `• ${r}`).join("\n")
+          : "No tienes roles."
+      }`
+    );
+  }
+
+  if (
+    [
+      "shopadd",
+      "shopremove",
+      "shopprice",
+      "shopclear",
+      "shopreset"
+    ].includes(command)
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+
+    const guildData =
+      getGuild(message.guild.id);
+
+    if (command === "shopadd") {
+      const role =
+        message.mentions.roles.first();
+
+      const price =
+        Number(args[1]);
+
+      if (!role || !Number.isFinite(price)) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}shopadd @rol precio\``
+        );
+      }
+
+      guildData.shop.roles[role.id] =
+        price;
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `🛒 ${role} añadido a la Shop por **$${price}**.`
+      );
+    }
+
+    if (command === "shopremove") {
+      const role =
+        message.mentions.roles.first();
+
+      if (!role) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}shopremove @rol\``
+        );
+      }
+
+      delete guildData.shop.roles[
+        role.id
+      ];
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `🗑️ ${role} eliminado de la Shop.`
+      );
+    }
+
+    if (command === "shopprice") {
+      const role =
+        message.mentions.roles.first();
+
+      const price =
+        Number(args[1]);
+
+      if (!role || !Number.isFinite(price)) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}shopprice @rol precio\``
+        );
+      }
+
+      guildData.shop.roles[role.id] =
+        price;
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `💰 Precio de ${role}: **$${price}**.`
+      );
+    }
+
+    if (
+      command === "shopclear" ||
+      command === "shopreset"
+    ) {
+      guildData.shop.roles = {};
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "♻️ Shop reiniciada y vaciada."
+      );
+    }
+  }
+}
+
+// ============================================================
+// 🏆 RANK
+// ============================================================
+
+async function rankCommand(
+  message,
+  command,
+  args
+) {
+  const user =
+    getUser(message.author.id);
+
+  if (
+    [
+      "rank",
+      "level",
+      "xp",
+      "rankcard",
+      "levels",
+      "mylevel",
+      "myxp",
+      "progress",
+      "nextlevel",
+      "xpinfo",
+      "progressbar",
+      "levelinfo",
+      "xpneeded",
+      "rankinfo",
+      "xprank",
+      "levelrank",
+      "nlevel",
+      "nprogress",
+      "ninjarank"
+    ].includes(command)
+  ) {
+    const needed =
+      neededXP(user.level);
+
+    const percentage =
+      Math.floor(
+        (user.xp / needed) * 100
+      );
+
+    const bars =
+      Math.floor(percentage / 10);
+
+    const progress =
+      "🟩".repeat(bars) +
+      "⬜".repeat(10 - bars);
+
+    const guildData =
+      getGuild(message.guild.id);
+
+    const text =
+      replaceRankText(
+        guildData.rank.text,
+        message.author,
+        user
+      );
+
+    return safeReply(
+      message,
+      `${text}\n\n` +
+      `🏆 Nivel: **${user.level}**\n` +
+      `⭐ XP: **${user.xp}/${needed}**\n` +
+      `${progress} **${percentage}%**`
+    );
+  }
+
+  if (
+    [
+      "leaderboard",
+      "top",
+      "xptop",
+      "leveltop",
+      "globalrank",
+      "guildrank",
+      "ranking",
+      "ranktop"
+    ].includes(command)
+  ) {
+    const list =
+      Object.entries(db.users)
+        .sort(
+          (a, b) =>
+            b[1].level - a[1].level ||
+            b[1].xp - a[1].xp
+        )
+        .slice(0, 10);
+
+    let text =
+      "🏆 **Ranking de Naruto**\n\n";
+
+    list.forEach(([id, data], index) => {
+      text +=
+        `**${index + 1}.** <@${id}> — Nivel **${data.level}** | XP **${data.xp}**\n`;
+    });
+
+    return replyLong(message, text);
+  }
+
+  if (
+    ["rewards"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      "🎁 Los niveles pueden utilizarse para recompensas y roles."
+    );
+  }
+
+  if (
+    ["stats"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `🏆 Nivel: **${user.level}**\n⭐ XP: **${user.xp}/${neededXP(user.level)}**`
+    );
+  }
+
+  if (
+    ["ranktitle", "setranktext"].includes(command)
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+
+    const guildData =
+      getGuild(message.guild.id);
+
+    if (args[0]?.toLowerCase() === "reset") {
+      guildData.rank.text =
+        "🍥 {user}, eres ninja al nivel **{level}**.\n⭐ XP: **{xp}/{needed}**";
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "🔄 Texto del Rank reiniciado."
+      );
+    }
+
+    const text =
+      args.join(" ");
+
+    if (!text) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}setranktext texto\``
+      );
+    }
+
+    guildData.rank.text = text;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      "✅ Texto del Rank actualizado."
+    );
+  }
+}
+
+// ============================================================
+// 👤 SOCIAL
+// ============================================================
+
+async function socialCommand(
+  message,
+  command,
+  args
+) {
+  const target =
+    message.mentions.members.first() ||
+    message.member;
+
+  const user =
+    getUser(target.id);
+
+  if (
+    [
+      "profile",
+      "aboutme",
+      "member",
+      "userprofile",
+      "profileinfo",
+      "account",
+      "accountinfo",
+      "social",
+      "user",
+      "me",
+      "memberinfo",
+      "userstats",
+      "identity"
+    ].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `👤 **Perfil de ${target.user.username}**\n\n` +
+      `⭐ Nivel: **${user.level}**\n` +
+      `✨ XP: **${user.xp}**\n` +
+      `❤️ Reputación: **${user.reps}**\n` +
+      `⚠️ Warnings: **${user.warnings}**\n` +
+      `📖 Bio: ${user.bio || "Sin biografía"}`
+    );
+  }
+
+  if (command === "avatar") {
+    return safeReply(
+      message,
+      target.user.displayAvatarURL({
+        size: 1024,
+        extension: "png"
+      })
+    );
+  }
+
+  if (command === "banner") {
+    const fetched =
+      await client.users.fetch(
+        target.id,
+        { force: true }
+      );
+
+    const banner =
+      fetched.bannerURL({
+        size: 1024,
+        extension: "png"
+      });
+
+    return safeReply(
+      message,
+      banner ||
+      "❌ Este usuario no tiene banner."
+    );
+  }
+
+  if (
+    ["bio", "mybio"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `📖 **Bio de ${target.user.username}:**\n${user.bio || "Sin biografía."}`
+    );
+  }
+
+  if (
+    ["setbio", "setdescription"].includes(command)
+  ) {
+    const me =
+      getUser(message.author.id);
+
+    me.bio =
+      args.join(" ").slice(0, 500);
+
+    saveDB();
+
+    return safeReply(
+      message,
+      "📖 Biografía actualizada."
+    );
+  }
+
+  if (
+    ["rep", "reps", "reputation", "repcount"].includes(
+      command
+    )
+  ) {
+    if (command === "rep") {
+      const mentioned =
+        message.mentions.users.first();
+
+      if (!mentioned) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}rep @usuario\``
+        );
+      }
+
+      if (mentioned.id === message.author.id) {
+        return safeReply(
+          message,
+          "❌ No puedes darte reputación a ti mismo."
+        );
+      }
+
+      const targetUser =
+        getUser(mentioned.id);
+
+      targetUser.reps++;
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `❤️ ${mentioned} ahora tiene **${targetUser.reps}** reputaciones.`
+      );
+    }
+
+    return safeReply(
+      message,
+      `❤️ ${target.user.username} tiene **${user.reps}** reputaciones.`
+    );
+  }
+
+  if (command === "rolesme") {
+    const roles =
+      target.roles.cache
+        .filter(r => r.id !== message.guild.id)
+        .map(r => r.toString());
+
+    return replyLong(
+      message,
+      roles.length
+        ? roles.join(" ")
+        : "🎭 Sin roles."
+    );
+  }
+
+  if (command === "id") {
+    return safeReply(
+      message,
+      `🆔 ID: \`${target.id}\``
+    );
+  }
+
+  if (command === "mention") {
+    return safeReply(
+      message,
+      `<@${target.id}>`
+    );
+  }
+
+  if (command === "joined") {
+    return safeReply(
+      message,
+      `📅 Entró al servidor: <t:${Math.floor(target.joinedTimestamp / 1000)}:F>`
+    );
+  }
+
+  if (command === "created") {
+    return safeReply(
+      message,
+      `📅 Cuenta creada: <t:${Math.floor(target.user.createdTimestamp / 1000)}:F>`
+    );
+  }
+
+  if (command === "whois") {
+    return safeReply(
+      message,
+      `👤 ${target.user.tag}\n🆔 ${target.id}`
+    );
+  }
+}
+
+// ============================================================
+// 🎮 DIVERSIÓN
+// ============================================================
+
+async function funCommand(
+  message,
+  command,
+  args
+) {
+  if (
+    ["8ball", "magic8", "magic"].includes(command)
+  ) {
+    const answers = [
+      "🥷 Sí.",
+      "🍥 Definitivamente.",
+      "⭐ Probablemente.",
+      "🤔 No estoy seguro.",
+      "❌ No.",
+      "🔥 Parece que sí.",
+      "🌙 Mejor pregunta después."
+    ];
+
+    return safeReply(
+      message,
+      answers[
+        Math.floor(
+          Math.random() * answers.length
+        )
+      ]
+    );
+  }
+
+  if (
+    ["dice", "roll"].includes(command)
+  ) {
+    const number =
+      Math.floor(
+        Math.random() * 6
+      ) + 1;
+
+    return safeReply(
+      message,
+      `🎲 Sacaste **${number}**.`
+    );
+  }
+
+  if (command === "coinflip" || command === "flip") {
+    return safeReply(
+      message,
+      Math.random() < 0.5
+        ? "🪙 Cara"
+        : "🪙 Cruz"
+    );
+  }
+
+  if (command === "rps") {
+    const choices = [
+      "🪨 Piedra",
+      "📄 Papel",
+      "✂️ Tijera"
+    ];
+
+    return safeReply(
+      message,
+      `🤖 Naruto eligió: **${
+        choices[
+          Math.floor(
+            Math.random() *
+            choices.length
+          )
+        ]
+      }**`
+    );
+  }
+
+  if (command === "choose") {
+    const options =
+      args.join(" ")
+        .split("|")
+        .map(x => x.trim())
+        .filter(Boolean);
+
+    if (options.length < 2) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}choose pizza | hamburguesa\``
+      );
+    }
+
+    return safeReply(
+      message,
+      `🎯 Elijo: **${
+        options[
+          Math.floor(
+            Math.random() *
+            options.length
+          )
+        ]
+      }**`
+    );
+  }
+
+  if (command === "reverse") {
+    return safeReply(
+      message,
+      args.join(" ").split("").reverse().join("")
+    );
+  }
+
+  if (command === "say") {
+    if (!args.length) {
+      return safeReply(
+        message,
+        "❌ Escribe algo."
+      );
+    }
+
+    return safeReply(
+      message,
+      args.join(" ")
+    );
+  }
+
+  if (
+    ["random", "number", "numberguess"].includes(
+      command
+    )
+  ) {
+    return safeReply(
+      message,
+      `🔢 Número aleatorio: **${
+        Math.floor(Math.random() * 100) + 1
+      }**`
+    );
+  }
+
+  if (command === "truth") {
+    return safeReply(
+      message,
+      "🤔 Verdad: ¿Cuál es tu juego favorito?"
+    );
+  }
+
+  if (command === "dare") {
+    return safeReply(
+      message,
+      "🎯 Reto: escribe una frase usando solo emojis."
+    );
+  }
+
+  if (command === "rate") {
+    return safeReply(
+      message,
+      `⭐ Calificación aleatoria: **${
+        Math.floor(Math.random() * 101)
+      }/100**`
+    );
+  }
+
+  if (command === "roast") {
+    return safeReply(
+      message,
+      "🔥 Roast amistoso: hasta Naruto tarda menos en aprender un jutsu que tú en decidir qué jugar 😂"
+    );
+  }
+
+  if (command === "compliment") {
+    return safeReply(
+      message,
+      "✨ ¡Eres una máquina! Sigue así."
+    );
+  }
+
+  if (command === "meme") {
+    return safeReply(
+      message,
+      "😂 Cuando dices 'una partida más' y son las 3 AM."
+    );
+  }
+
+  if (command === "cat") {
+    return safeReply(
+      message,
+      "🐱 Miau."
+    );
+  }
+
+  if (command === "ninja") {
+    return safeReply(
+      message,
+      "🥷 ¡Modo ninja activado!"
+    );
+  }
+
+  if (command === "luck") {
+    return safeReply(
+      message,
+      `🍀 Tu suerte hoy es **${
+        Math.floor(Math.random() * 101)
+      }%**.`
+    );
+  }
+
+  if (command === "funfact") {
+    return safeReply(
+      message,
+      "🍥 Fun fact: Naruto es conocido por su pasión por el ramen."
+    );
+  }
+
+  if (command === "clap") {
+    return safeReply(
+      message,
+      "👏👏👏👏👏"
+    );
+  }
+
+  if (command === "yesno") {
+    return safeReply(
+      message,
+      Math.random() < 0.5
+        ? "✅ Sí"
+        : "❌ No"
+    );
+  }
+
+  if (command === "hi") {
+    return safeReply(
+      message,
+      "🍥 ¡Hola! Soy Naruto."
+    );
+  }
+
+  if (command === "ramen") {
+    return safeReply(
+      message,
+      "🍜 ¡Ramen para todos!"
+    );
+  }
+
+  if (command === "jutsu") {
+    return safeReply(
+      message,
+      "🔥 ¡Katon! ¡Gōkakyū no Jutsu!"
+    );
+  }
+}
+
+// ============================================================
+// 🏠 SERVIDOR
+// ============================================================
+
+async function serverCommand(
+  message,
+  command,
+  args
+) {
+  const guild =
+    message.guild;
+
+  if (
+    [
+      "serverinfo",
+      "guildinfo",
+      "info",
+      "serverstats",
+      "guild"
+    ].includes(command)
+  ) {
+    const owner =
+      await guild.fetchOwner();
+
+    return safeReply(
+      message,
+      `🏠 **${guild.name}**\n\n` +
+      `👑 Dueño: ${owner.user.tag}\n` +
+      `👥 Miembros: **${guild.memberCount}**\n` +
+      `🎭 Roles: **${guild.roles.cache.size}**\n` +
+      `📁 Canales: **${guild.channels.cache.size}**\n` +
+      `😀 Emojis: **${guild.emojis.cache.size}**\n` +
+      `🚀 Boosts: **${guild.premiumSubscriptionCount || 0}**\n` +
+      `🆔 ID: \`${guild.id}\``
+    );
+  }
+
+  if (
+    ["servericon", "icon"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      guild.iconURL({
+        size: 1024
+      }) || "❌ Sin icono."
+    );
+  }
+
+  if (
+    ["roleinfo"].includes(command)
+  ) {
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}roleinfo @rol\``
+      );
+    }
+
+    return safeReply(
+      message,
+      `🎭 **${role.name}**\n🆔 ${role.id}\n👥 Miembros: **${role.members.size}**\n📊 Posición: **${role.position}**`
+    );
+  }
+
+  if (command === "channelinfo") {
+    const channel =
+      message.mentions.channels.first() ||
+      message.channel;
+
+    return safeReply(
+      message,
+      `📁 **${channel.name}**\n🆔 ${channel.id}\n📌 Tipo: ${channel.type}`
+    );
+  }
+
+  if (
+    ["rolelist", "roles"].includes(command)
+  ) {
+    const roles =
+      guild.roles.cache
+        .sort((a, b) => b.position - a.position)
+        .map(r => r.name);
+
+    return replyLong(
+      message,
+      `🎭 **Roles**\n\n${roles.join("\n")}`
+    );
+  }
+
+  if (
+    ["membercount", "members"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `👥 Este servidor tiene **${guild.memberCount}** miembros.`
+    );
+  }
+
+  if (command === "channels") {
+    const channels =
+      guild.channels.cache
+        .map(c => `• ${c.name}`);
+
+    return replyLong(
+      message,
+      channels.join("\n")
+    );
+  }
+
+  if (command === "emojis") {
+    const emojis =
+      guild.emojis.cache
+        .map(e => `${e} ${e.name}`);
+
+    return replyLong(
+      message,
+      emojis.length
+        ? emojis.join("\n")
+        : "😀 No hay emojis."
+    );
+  }
+
+  if (command === "stickers") {
+    return safeReply(
+      message,
+      `🎟️ Stickers: **${guild.stickers.cache.size}**`
+    );
+  }
+
+  if (
+    ["boosts", "boostinfo"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `🚀 Boosts: **${guild.premiumSubscriptionCount || 0}**\n📈 Nivel: **${guild.premiumTier}**`
+    );
+  }
+
+  if (
+    ["owner", "serverowner"].includes(command)
+  ) {
+    const owner =
+      await guild.fetchOwner();
+
+    return safeReply(
+      message,
+      `👑 Dueño: ${owner.user.tag}`
+    );
+  }
+
+  if (
+    ["createdserver", "datecreated"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `📅 Creado: <t:${Math.floor(guild.createdTimestamp / 1000)}:F>`
+    );
+  }
+
+  if (
+    ["serverid", "guildid"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `🆔 \`${guild.id}\``
+    );
+  }
+
+  if (command === "invite") {
+    const invite =
+      await message.channel
+        .createInvite({
+          maxAge: 86400,
+          maxUses: 0
+        })
+        .catch(() => null);
+
+    return safeReply(
+      message,
+      invite
+        ? `🔗 ${invite.url}`
+        : "❌ No tengo permisos para crear invitaciones."
+    );
+  }
+
+  if (command === "ping") {
+    return safeReply(
+      message,
+      `🏓 Pong! **${client.ws.ping}ms**`
+    );
+  }
+
+  if (command === "stats") {
+    return safeReply(
+      message,
+      `📊 **Estadísticas**\n👥 ${guild.memberCount} miembros\n🎭 ${guild.roles.cache.size} roles\n📁 ${guild.channels.cache.size} canales`
+    );
+  }
+
+  if (command === "rolescount") {
+    return safeReply(
+      message,
+      `🎭 Roles: **${guild.roles.cache.size}**`
+    );
+  }
+
+  if (command === "channelcount") {
+    return safeReply(
+      message,
+      `📁 Canales: **${guild.channels.cache.size}**`
+    );
+  }
+
+  if (command === "emojicount") {
+    return safeReply(
+      message,
+      `😀 Emojis: **${guild.emojis.cache.size}**`
+    );
+  }
+}
+
+// ============================================================
+// 🔐 SEGURIDAD
+// ============================================================
+
+async function securityCommand(
+  message,
+  command,
+  args
+) {
+  if (!isAdmin(message.member)) {
+    return safeReply(
+      message,
+      "❌ Necesitas permisos de Administrador."
+    );
+  }
+
+  const config =
+    getGuild(message.guild.id);
+
+  if (command === "antilink") {
+    const option =
+      args[0]?.toLowerCase();
+
+    if (option === "on") {
+      config.antilink.enabled = true;
+      saveDB();
+
+      return safeReply(
+        message,
+        "🔗 AntiLink activado."
+      );
+    }
+
+    if (option === "off") {
+      config.antilink.enabled = false;
+      saveDB();
+
+      return safeReply(
+        message,
+        "🔗 AntiLink desactivado."
+      );
+    }
+
+    if (option === "add") {
+      const domain = args[1];
+
+      if (!domain) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}antilink add dominio.com\``
+        );
+      }
+
+      config.antilink.whitelist.push(
+        domain
+      );
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `✅ Dominio añadido a whitelist: **${domain}**`
+      );
+    }
+
+    if (option === "remove") {
+      const domain = args[1];
+
+      config.antilink.whitelist =
+        config.antilink.whitelist.filter(
+          x => x !== domain
+        );
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "🗑️ Dominio eliminado."
+      );
+    }
+
+    return safeReply(
+      message,
+      `🔗 AntiLink: **${
+        config.antilink.enabled
+          ? "ACTIVO"
+          : "INACTIVO"
+      }**`
+    );
+  }
+
+  if (command === "antiraid") {
+    const option =
+      args[0]?.toLowerCase();
+
+    if (option === "on") {
+      config.antiraid.enabled = true;
+      saveDB();
+
+      return safeReply(
+        message,
+        "🚨 AntiRaid activado."
+      );
+    }
+
+    if (option === "off") {
+      config.antiraid.enabled = false;
+      saveDB();
+
+      return safeReply(
+        message,
+        "🚨 AntiRaid desactivado."
+      );
+    }
+
+    if (option === "add") {
+      const bot =
+        message.mentions.users.first();
+
+      if (!bot) {
+        return safeReply(
+          message,
+          `❌ Uso: \`${PREFIX}antiraid add @bot\``
+        );
+      }
+
+      if (
+        !config.antiraid.botWhitelist.includes(
+          bot.id
+        )
+      ) {
+        config.antiraid.botWhitelist.push(
+          bot.id
+        );
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `✅ ${bot} añadido a la whitelist de AntiRaid.`
+      );
+    }
+
+    if (option === "remove") {
+      const bot =
+        message.mentions.users.first();
+
+      if (bot) {
+        config.antiraid.botWhitelist =
+          config.antiraid.botWhitelist.filter(
+            id => id !== bot.id
+          );
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "🗑️ Bot eliminado de AntiRaid."
+      );
+    }
+
+    return safeReply(
+      message,
+      `🚨 AntiRaid: **${
+        config.antiraid.enabled
+          ? "ACTIVO"
+          : "INACTIVO"
+      }**`
+    );
+  }
+
+  if (command === "antinuke") {
+    const option =
+      args[0]?.toLowerCase();
+
+    if (option === "on") {
+      config.antinuke.enabled = true;
+      saveDB();
+
+      return safeReply(
+        message,
+        "☢️ AntiNuke activado."
+      );
+    }
+
+    if (option === "off") {
+      config.antinuke.enabled = false;
+      saveDB();
+
+      return safeReply(
+        message,
+        "☢️ AntiNuke desactivado."
+      );
+    }
+
+    return safeReply(
+      message,
+      `☢️ AntiNuke: **${
+        config.antinuke.enabled
+          ? "ACTIVO"
+          : "INACTIVO"
+      }**\n📁 Canales protegidos: **${
+        config.antinuke.protectChannels
+      }**\n🎭 Roles protegidos: **${
+        config.antinuke.protectRoles
+      }**`
+    );
+  }
+
+  if (
+    ["protection", "security", "securityinfo",
+      "protectionstatus", "antihelp",
+      "nukestatus"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `🔐 **Seguridad Naruto**\n\n` +
+      `🔗 AntiLink: ${config.antilink.enabled ? "🟢" : "🔴"}\n` +
+      `🚨 AntiRaid: ${config.antiraid.enabled ? "🟢" : "🔴"}\n` +
+      `☢️ AntiNuke: ${config.antinuke.enabled ? "🟢" : "🔴"}\n` +
+      `📜 Logs: ${config.logsChannel ? `<#${config.logsChannel}>` : "🔴"}`
+    );
+  }
+
+  if (
+    [
+      "whitelist",
+      "addwhitelist",
+      "removewhitelist"
+    ].includes(command)
+  ) {
+    const type =
+      args[0]?.toLowerCase();
+
+    const user =
+      message.mentions.users.first();
+
+    const role =
+      message.mentions.roles.first();
+
+    if (type === "user" && user) {
+      if (
+        command === "removewhitelist"
+      ) {
+        config.antinuke.whitelistUsers =
+          config.antinuke.whitelistUsers.filter(
+            id => id !== user.id
+          );
+      } else {
+        if (
+          !config.antinuke.whitelistUsers.includes(
+            user.id
+          )
+        ) {
+          config.antinuke.whitelistUsers.push(
+            user.id
+          );
+        }
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "✅ Whitelist de usuario actualizada."
+      );
+    }
+
+    if (type === "role" && role) {
+      if (
+        command === "removewhitelist"
+      ) {
+        config.antinuke.whitelistRoles =
+          config.antinuke.whitelistRoles.filter(
+            id => id !== role.id
+          );
+      } else {
+        if (
+          !config.antinuke.whitelistRoles.includes(
+            role.id
+          )
+        ) {
+          config.antinuke.whitelistRoles.push(
+            role.id
+          );
+        }
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        "✅ Whitelist de rol actualizada."
+      );
+    }
+
+    return safeReply(
+      message,
+      `❌ Uso: \`${PREFIX}whitelist user @usuario\` o \`${PREFIX}whitelist role @rol\``
+    );
+  }
+
+  if (
+    ["botwhitelist", "addbot", "removebot"].includes(
+      command
+    )
+  ) {
+    const bot =
+      message.mentions.users.first();
+
+    if (!bot) {
+      return safeReply(
+        message,
+        `❌ Menciona un bot.`
+      );
+    }
+
+    if (
+      command === "removebot"
+    ) {
+      config.antiraid.botWhitelist =
+        config.antiraid.botWhitelist.filter(
+          id => id !== bot.id
+        );
+    } else {
+      if (
+        !config.antiraid.botWhitelist.includes(
+          bot.id
+        )
+      ) {
+        config.antiraid.botWhitelist.push(
+          bot.id
+        );
+      }
+    }
+
+    saveDB();
+
+    return safeReply(
+      message,
+      "🤖 Whitelist de bots actualizada."
+    );
+  }
+
+  if (
+    ["antichannel", "antirole"].includes(
+      command
+    )
+  ) {
+    const option =
+      args[0]?.toLowerCase();
+
+    const key =
+      command === "antichannel"
+        ? "protectChannels"
+        : "protectRoles";
+
+    if (option === "on") {
+      config.antinuke[key] = true;
+    } else if (option === "off") {
+      config.antinuke[key] = false;
+    }
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `🛡️ Protección ${
+        command === "antichannel"
+          ? "de canales"
+          : "de roles"
+      }: **${
+        config.antinuke[key]
+          ? "ACTIVA"
+          : "INACTIVA"
+      }**`
+    );
+  }
+
+  if (
+    [
+      "setlogs",
+      "logchannel"
+    ].includes(command)
+  ) {
+    const channel =
+      message.mentions.channels.first();
+
+    if (!channel) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}setlogs #canal\``
+      );
+    }
+
+    config.logsChannel = channel.id;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `📜 Canal de logs configurado: ${channel}`
+    );
+  }
+
+  if (
+    ["disablelogs"].includes(command)
+  ) {
+    config.logsChannel = null;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      "📜 Logs desactivados."
+    );
+  }
+
+  if (command === "testlogs") {
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "🧪 Test de Logs",
+        `Los logs funcionan correctamente.\nProbado por ${message.author}.`
+      )
+    );
+
+    return safeReply(
+      message,
+      "🧪 Log de prueba enviado."
+    );
+  }
+
+  if (
+    ["logs"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `📜 Canal de logs: ${
+        config.logsChannel
+          ? `<#${config.logsChannel}>`
+          : "No configurado"
+      }`
+    );
+  }
+
+  if (
+    ["audit", "auditlog"].includes(command)
+  ) {
+    const logs =
+      await message.guild
+        .fetchAuditLogs({
+          limit: 5
+        })
+        .catch(() => null);
+
+    if (!logs) {
+      return safeReply(
+        message,
+        "❌ No pude acceder a los Audit Logs."
+      );
+    }
+
+    let text = "📜 **Últimos Audit Logs**\n\n";
+
+    logs.entries.forEach(entry => {
+      text +=
+        `• ${entry.action} — ${entry.executor?.tag || "Desconocido"}\n`;
+    });
+
+    return replyLong(
+      message,
+      text
+    );
+  }
+
+  if (
+    ["raidstatus", "linkstatus"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `🚨 AntiRaid: ${
+        config.antiraid.enabled
+          ? "🟢 Activo"
+          : "🔴 Inactivo"
+      }\n🔗 AntiLink: ${
+        config.antilink.enabled
+          ? "🟢 Activo"
+          : "🔴 Inactivo"
+      }`
+    );
+  }
+
+  if (command === "whitelistusers") {
+    return safeReply(
+      message,
+      config.antinuke.whitelistUsers.length
+        ? config.antinuke.whitelistUsers
+            .map(id => `<@${id}>`)
+            .join("\n")
+        : "No hay usuarios en whitelist."
+    );
+  }
+
+  if (command === "whitelistroles") {
+    return safeReply(
+      message,
+      config.antinuke.whitelistRoles.length
+        ? config.antinuke.whitelistRoles
+            .map(id => `<@&${id}>`)
+            .join("\n")
+        : "No hay roles en whitelist."
+    );
+  }
+
+  if (command === "whitelistbots") {
+    return safeReply(
+      message,
+      config.antiraid.botWhitelist.length
+        ? config.antiraid.botWhitelist
+            .map(id => `<@${id}>`)
+            .join("\n")
+        : "No hay bots en whitelist."
+    );
+  }
+
+  if (
+    ["antiwhitelist"].includes(command)
+  ) {
+    return safeReply(
+      message,
+      `👤 Usuarios: **${config.antinuke.whitelistUsers.length}**\n🎭 Roles: **${config.antinuke.whitelistRoles.length}**\n🤖 Bots: **${config.antiraid.botWhitelist.length}**`
+    );
+  }
+}
+
+// ============================================================
+// ⚙️ CONFIGURACIÓN
+// ============================================================
+
+async function configCommand(
+  message,
+  command,
+  args
+) {
+  if (
+    [
+      "settings",
+      "config",
+      "setup",
+      "serverconfig",
+      "modules"
+    ].includes(command)
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+
+    const g =
+      getGuild(message.guild.id);
+
+    return safeReply(
+      message,
+      `⚙️ **Configuración Naruto**\n\n` +
+      `📜 Logs: ${g.logsChannel ? `<#${g.logsChannel}>` : "❌"}\n` +
+      `🔗 AntiLink: ${g.antilink.enabled ? "🟢" : "🔴"}\n` +
+      `🚨 AntiRaid: ${g.antiraid.enabled ? "🟢" : "🔴"}\n` +
+      `☢️ AntiNuke: ${g.antinuke.enabled ? "🟢" : "🔴"}\n` +
+      `👋 Welcome: ${g.welcome.enabled ? "🟢" : "🔴"}\n` +
+      `🎭 Autorole: ${g.autorole.enabled ? "🟢" : "🔴"}\n` +
+      `🏆 Rank: ${g.rank.enabled ? "🟢" : "🔴"}`
+    );
+  }
+
+  if (
+    ["welcome", "welcomechannel"].includes(
+      command
+    )
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+
+    const g =
+      getGuild(message.guild.id);
+
+    if (command === "welcome") {
+      const option =
+        args[0]?.toLowerCase();
+
+      if (option === "on") {
+        g.welcome.enabled = true;
+      }
+
+      if (option === "off") {
+        g.welcome.enabled = false;
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `👋 Welcome: **${
+          g.welcome.enabled
+            ? "ACTIVO"
+            : "INACTIVO"
+        }**`
+      );
+    }
+
+    const channel =
+      message.mentions.channels.first();
+
+    if (!channel) {
+      return safeReply(
+        message,
+        `❌ Menciona un canal.`
+      );
+    }
+
+    g.welcome.channel =
+      channel.id;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `👋 Canal de bienvenida: ${channel}`
+    );
+  }
+
+  if (
+    ["autorole", "autoroleset"].includes(
+      command
+    )
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+
+    const g =
+      getGuild(message.guild.id);
+
+    if (command === "autorole") {
+      const option =
+        args[0]?.toLowerCase();
+
+      if (option === "on") {
+        g.autorole.enabled = true;
+      }
+
+      if (option === "off") {
+        g.autorole.enabled = false;
+      }
+
+      saveDB();
+
+      return safeReply(
+        message,
+        `🎭 Autorole: **${
+          g.autorole.enabled
+            ? "ACTIVO"
+            : "INACTIVO"
+        }**`
+      );
+    }
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        "❌ Menciona un rol."
+      );
+    }
+
+    g.autorole.role =
+      role.id;
+
+    saveDB();
+
+    return safeReply(
+      message,
+      `🎭 Autorole configurado: ${role}`
+    );
+  }
+
+  if (
+    ["setranktext", "ranktext", "ranktitle"].includes(
+      command
+    )
+  ) {
+    return rankCommand(
+      message,
+      "setranktext",
+      args
+    );
+  }
+
+  if (command === "setprefix") {
+    return safeReply(
+      message,
+      "🍥 El prefijo de Naruto está fijado en `N!`."
+    );
+  }
+
+  if (command === "reload") {
+    loadDB();
+
+    return safeReply(
+      message,
+      "♻️ Base de datos recargada."
+    );
+  }
+
+  if (command === "database") {
+    return safeReply(
+      message,
+      `💾 Usuarios: **${Object.keys(db.users).length}**\n🏠 Servidores: **${Object.keys(db.guilds).length}**`
+    );
+  }
+
+  if (command === "backup") {
+    saveDB();
+
+    return safeReply(
+      message,
+      "💾 Base de datos guardada correctamente."
+    );
+  }
+
+  if (command === "botstatus") {
+    return safeReply(
+      message,
+      `🍥 Naruto está conectado.\n🏠 Servidores: **${client.guilds.cache.size}**\n👥 Usuarios en caché: **${client.users.cache.size}**`
+    );
+  }
+
+  if (command === "activity") {
+    return safeReply(
+      message,
+      `🎮 Actividad: **Naruto | ${PREFIX}help**`
+    );
+  }
+
+  if (command === "language") {
+    return safeReply(
+      message,
+      "🇪🇸 Idioma configurado: Español."
+    );
+  }
+
+  if (
+    ["shopadd", "shopremove", "shopprice",
+      "shopclear", "shopreset"].includes(command)
+  ) {
+    return shopCommand(
+      message,
+      command,
+      args
+    );
+  }
+
+  if (
+    ["setlogs", "disablelogs", "testlogs"].includes(
+      command
+    )
+  ) {
+    return securityCommand(
+      message,
+      command,
+      args
+    );
+  }
+
+  if (command === "helpadmin") {
+    return showAdminHelp(message);
+  }
+
+  if (command === "help") {
+    return showHelp(message);
+  }
+}
+
+// ============================================================
+// 🎭 ROLES
+// ============================================================
+
+async function rolesCommand(
+  message,
+  command,
+  args
+) {
+  if (
+    [
+      "roleinfo",
+      "rolelist",
+      "roles",
+      "rolecount",
+      "rolecheck",
+      "rolewhitelist",
+      "roleprotect"
+    ].includes(command)
+  ) {
+    return serverCommand(
+      message,
+      command,
+      args
+    );
+  }
+
+  if (
+    ["rolesme", "myroles", "memberroles"].includes(
+      command
+    )
+  ) {
+    return socialCommand(
+      message,
+      "rolesme",
+      args
+    );
+  }
+
+  if (
+    [
+      "addrole",
+      "giverole",
+      "roleadd",
+      "removerole",
+      "takerole",
+      "roleremove",
+      "rolecreate",
+      "roledelete",
+      "rolecolor",
+      "rolehoist",
+      "rolemention",
+      "move",
+      "roleedit",
+      "roleperm"
+    ].includes(command)
+  ) {
+    if (!isAdmin(message.member)) {
+      return safeReply(
+        message,
+        "❌ Necesitas permisos de Administrador."
+      );
+    }
+  }
+
+  if (
+    ["addrole", "giverole", "roleadd"].includes(
+      command
+    )
+  ) {
+    const member =
+      message.mentions.members.first();
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!member || !role) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}giverole @usuario @rol\``
+      );
+    }
+
+    if (!role.editable) {
+      return safeReply(
+        message,
+        "❌ Naruto no puede administrar ese rol."
+      );
+    }
+
+    await member.roles.add(role)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🎭 ${role} añadido a ${member}.`
+    );
+  }
+
+  if (
+    ["removerole", "takerole", "roleremove"].includes(
+      command
+    )
+  ) {
+    const member =
+      message.mentions.members.first();
+
+    const role =
+      message.mentions.roles.first();
+
+    if (!member || !role) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}takerole @usuario @rol\``
+      );
+    }
+
+    if (!role.editable) {
+      return safeReply(
+        message,
+        "❌ Naruto no puede administrar ese rol."
+      );
+    }
+
+    await member.roles.remove(role)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      `🎭 ${role} eliminado de ${member}.`
+    );
+  }
+
+  if (command === "rolecreate") {
+    const name =
+      args.join(" ");
+
+    if (!name) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}rolecreate nombre\``
+      );
+    }
+
+    const role =
+      await message.guild.roles.create({
+        name,
+        reason: `Creado por ${message.author.tag}`
+      }).catch(() => null);
+
+    return safeReply(
+      message,
+      role
+        ? `🎭 Rol creado: ${role}`
+        : "❌ No pude crear el rol."
+    );
+  }
+
+  if (command === "roledelete") {
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        "❌ Menciona un rol."
+      );
+    }
+
+    if (!role.editable) {
+      return safeReply(
+        message,
+        "❌ No puedo eliminar ese rol."
+      );
+    }
+
+    await role.delete()
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      "🗑️ Rol eliminado."
+    );
+  }
+
+  if (command === "rolecolor") {
+    const role =
+      message.mentions.roles.first();
+
+    const hex =
+      args.find(x =>
+        /^#[0-9A-F]{6}$/i.test(x)
+      );
+
+    if (!role || !hex) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}rolecolor @rol #FF0000\``
+      );
+    }
+
+    await role.setColor(hex)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      "🎨 Color del rol actualizado."
+    );
+  }
+
+  if (command === "rolehoist") {
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        "❌ Menciona un rol."
+      );
+    }
+
+    await role.setHoist(!role.hoist)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      "🎭 Hoist actualizado."
+    );
+  }
+
+  if (command === "rolemention") {
+    const role =
+      message.mentions.roles.first();
+
+    if (!role) {
+      return safeReply(
+        message,
+        "❌ Menciona un rol."
+      );
+    }
+
+    await role.setMentionable(
+      !role.mentionable
+    ).catch(() => null);
+
+    return safeReply(
+      message,
+      "📣 Mentionable actualizado."
+    );
+  }
+
+  if (command === "move") {
+    const role =
+      message.mentions.roles.first();
+
+    const position =
+      Number(args[1]);
+
+    if (!role || !Number.isFinite(position)) {
+      return safeReply(
+        message,
+        `❌ Uso: \`${PREFIX}move @rol posición\``
+      );
+    }
+
+    await role.setPosition(position)
+      .catch(() => null);
+
+    return safeReply(
+      message,
+      "↕️ Posición actualizada."
+    );
+  }
+
+  if (
+    ["roleedit", "roleperm", "rolehelp"].includes(
+      command
+    )
+  ) {
+    return safeReply(
+      message,
+      "🎭 Usa los comandos de gestión de roles de Naruto."
+    );
+  }
+}
+
+// ============================================================
+// 🎛️ BOTONES
 // ============================================================
 
 client.on(
   Events.InteractionCreate,
   async interaction => {
+
     try {
 
-      // ========================================================
-      // 📚 SELECT MENÚ
-      // ========================================================
+      if (interaction.isButton()) {
 
-      if (
-        interaction.isStringSelectMenu()
-      ) {
-
-        // PUBLIC
         if (
           interaction.customId.startsWith(
-            "public_help_"
+            "openadminhelp_"
           )
         ) {
           const userId =
-            interaction.customId.replace(
-              "public_help_",
-              ""
-            );
+            interaction.customId.split("_")[1];
 
           if (
-            interaction.user.id !==
-            userId
+            interaction.user.id !== userId
           ) {
             return interaction.reply({
               content:
@@ -3218,62 +4019,10 @@ client.on(
             });
           }
 
-          const key =
-            interaction.values[0];
-
           if (
-            !categories[key]
-          ) {
-            return;
-          }
-
-          const member =
-            interaction.guild.members.cache.get(
-              interaction.user.id
-            );
-
-          return interaction.update({
-            embeds: [
-              categoryEmbed(key)
-            ],
-            components:
-              publicMenu(
-                interaction.user.id,
-                member
-              )
-          });
-        }
-
-        // ADMIN
-        if (
-          interaction.customId.startsWith(
-            "admin_category_"
-          )
-        ) {
-          const userId =
-            interaction.customId.replace(
-              "admin_category_",
-              ""
-            );
-
-          if (
-            interaction.user.id !==
-            userId
-          ) {
-            return interaction.reply({
-              content:
-                "❌ Este menú pertenece a otra persona.",
-              ephemeral: true
-            });
-          }
-
-          const member =
-            interaction.guild.members.cache.get(
-              interaction.user.id
-            );
-
-          if (
-            !isAdmin(member)
+            !isAdmin(
+              interaction.member
+            )
           ) {
             return interaction.reply({
               content:
@@ -3282,200 +4031,131 @@ client.on(
             });
           }
 
-          const key =
-            interaction.values[0];
-
           return interaction.update({
             embeds: [
-              adminCategoryEmbed(key)
+              new EmbedBuilder()
+                .setTitle(
+                  "⚙️ Naruto — Administración"
+                )
+                .setDescription(
+                  "Selecciona una categoría."
+                )
             ],
-            components:
-              adminMenu(
-                interaction.user.id
+            components: [
+              createHelpMenu(
+                interaction.user.id,
+                true
               )
+            ]
           });
         }
-      }
-
-      // ========================================================
-      // 🛒 BOTÓN COMPRAR
-      // ========================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId.startsWith(
-          "shop_buy_"
-        )
-      ) {
-        const roleId =
-          interaction.customId.replace(
-            "shop_buy_",
-            ""
-          );
-
-        const role =
-          interaction.guild.roles.cache.get(
-            roleId
-          );
-
-        if (!role) {
-          return interaction.reply({
-            content:
-              "❌ Ese rol ya no existe.",
-            ephemeral: true
-          });
-        }
-
-        const g =
-          getGuild(
-            interaction.guild.id
-          );
-
-        const product =
-          g.shop.roles[
-            roleId
-          ];
-
-        if (!product) {
-          return interaction.reply({
-            content:
-              "❌ Ese producto ya no está disponible.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          getUser(
-            interaction.user.id
-          );
 
         if (
-          interaction.member.roles.cache.has(
-            roleId
+          interaction.customId.startsWith(
+            "buyrole_"
           )
         ) {
-          return interaction.reply({
-            content:
-              "❌ Ya tienes este rol.",
-            ephemeral: true
-          });
-        }
+          const roleId =
+            interaction.customId
+              .replace("buyrole_", "");
 
-        if (
-          user.money <
-          product.price
-        ) {
-          return interaction.reply({
-            content:
-              `❌ Necesitas **$${product.price}** y tienes **$${user.money}**.`,
-            ephemeral: true
-          });
-        }
+          const guild =
+            interaction.guild;
 
-        if (
-          !role.editable
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Naruto no puede darte este rol. Sube el rol de Naruto por encima del rol de la tienda.",
-            ephemeral: true
-          });
-        }
+          const role =
+            guild.roles.cache.get(roleId);
 
-        user.money -=
-          product.price;
+          if (!role) {
+            return interaction.reply({
+              content:
+                "❌ Ese rol ya no existe.",
+              ephemeral: true
+            });
+          }
 
-        await interaction.member.roles
-          .add(
-            role,
-            "Naruto Shop Purchase"
-          )
-          .catch(() => {});
+          const guildData =
+            getGuild(guild.id);
 
-        saveDB();
+          const price =
+            guildData.shop.roles[roleId];
 
-        return interaction.reply({
-          content:
-            `🎉 **COMPRA REALIZADA**\n\n` +
-            `🛒 ${role}\n` +
-            `💰 Precio: **$${product.price}**\n` +
-            `💵 Dinero restante: **$${user.money}**`,
-          ephemeral: true
-        });
-      }
+          if (price === undefined) {
+            return interaction.reply({
+              content:
+                "❌ Ese producto ya no está disponible.",
+              ephemeral: true
+            });
+          }
 
-      // ========================================================
-      // 🔐 ABRIR PANEL ADMIN
-      // ========================================================
+          const user =
+            getUser(interaction.user.id);
 
-      if (
-        interaction.isButton() &&
-        interaction.customId.startsWith(
-          "admin_help_"
-        )
-      ) {
-        const userId =
-          interaction.customId.replace(
-            "admin_help_",
-            ""
-          );
+          if (user.money < price) {
+            return interaction.reply({
+              content:
+                `❌ Necesitas **$${price}** y tienes **$${user.money}**.`,
+              ephemeral: true
+            });
+          }
 
-        if (
-          interaction.user.id !==
-          userId
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Este menú pertenece a otra persona.",
-            ephemeral: true
-          });
-        }
-
-        const member =
-          interaction.guild.members.cache.get(
-            interaction.user.id
-          );
-
-        if (
-          !isAdmin(member)
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Necesitas permisos de Administrador.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.update({
-          embeds: [
-            adminHelp()
-          ],
-          components:
-            adminMenu(
-              interaction.user.id
+          if (
+            interaction.member.roles.cache.has(
+              roleId
             )
-        });
-      }
+          ) {
+            return interaction.reply({
+              content:
+                "❌ Ya tienes ese rol.",
+              ephemeral: true
+            });
+          }
 
-      // ========================================================
-      // ◀️ ADMIN → PÚBLICO
-      // ========================================================
+          if (!role.editable) {
+            return interaction.reply({
+              content:
+                "❌ Naruto no puede entregar este rol. Pon el rol de Naruto por encima.",
+              ephemeral: true
+            });
+          }
 
-      if (
-        interaction.isButton() &&
-        interaction.customId.startsWith(
-          "public_from_admin_"
-        )
-      ) {
-        const userId =
-          interaction.customId.replace(
-            "public_from_admin_",
-            ""
+          user.money -= price;
+
+          await interaction.member.roles
+            .add(role)
+            .catch(() => null);
+
+          saveDB();
+
+          await sendLog(
+            guild,
+            logEmbed(
+              "🛒 Compra realizada",
+              `${interaction.user} compró ${role} por **$${price}**.`
+            )
           );
 
+          return interaction.reply({
+            content:
+              `🛒 ¡Compra realizada! Recibiste ${role} por **$${price}**.`,
+            ephemeral: true
+          });
+        }
+      }
+
+      if (
+        interaction.isStringSelectMenu()
+      ) {
+        const parts =
+          interaction.customId.split("_");
+
+        const type =
+          parts[0];
+
+        const userId =
+          parts[1];
+
         if (
-          interaction.user.id !==
-          userId
+          interaction.user.id !== userId
         ) {
           return interaction.reply({
             content:
@@ -3484,52 +4164,608 @@ client.on(
           });
         }
 
-        const member =
-          interaction.guild.members.cache.get(
-            interaction.user.id
+        const category =
+          interaction.values[0];
+
+        const embed =
+          helpCategoryEmbed(
+            category
           );
 
+        if (!embed) {
+          return interaction.reply({
+            content:
+              "❌ Categoría no encontrada.",
+            ephemeral: true
+          });
+        }
+
         return interaction.update({
-          embeds: [
-            mainHelp(member)
-          ],
-          components:
-            publicMenu(
+          embeds: [embed],
+          components: [
+            createHelpMenu(
               interaction.user.id,
-              member
+              type === "helpadmin"
             )
+          ]
         });
       }
 
-    } catch (error) {
+    } catch (err) {
       console.error(
-        "❌ INTERACTION ERROR:",
-        error
+        "❌ Interaction error:",
+        err
       );
     }
   }
 );
 
 // ============================================================
-// 🚨 ERRORES
+// 👋 MIEMBROS
 // ============================================================
 
 client.on(
-  Events.Error,
-  error => {
-    console.error(
-      "❌ Discord Error:",
-      error
+  Events.GuildMemberAdd,
+  async member => {
+
+    const config =
+      getGuild(member.guild.id);
+
+    // AntiRaid
+    if (
+      member.user.bot &&
+      config.antiraid.enabled &&
+      !config.antiraid.botWhitelist.includes(
+        member.id
+      )
+    ) {
+      if (member.bannable) {
+        await member.ban({
+          reason:
+            "🚨 Naruto AntiRaid"
+        }).catch(() => {});
+      }
+
+      await sendLog(
+        member.guild,
+        logEmbed(
+          "🚨 AntiRaid",
+          `🤖 Bot bloqueado: ${member.user.tag}`
+        )
+      );
+
+      return;
+    }
+
+    // Autorole
+    if (
+      config.autorole.enabled &&
+      config.autorole.role
+    ) {
+      const role =
+        member.guild.roles.cache.get(
+          config.autorole.role
+        );
+
+      if (
+        role &&
+        role.editable
+      ) {
+        await member.roles
+          .add(role)
+          .catch(() => {});
+      }
+    }
+
+    // Welcome
+    if (
+      config.welcome.enabled &&
+      config.welcome.channel
+    ) {
+      const channel =
+        member.guild.channels.cache.get(
+          config.welcome.channel
+        );
+
+      if (
+        channel &&
+        channel.isTextBased()
+      ) {
+        channel.send(
+          `👋 ¡Bienvenido ${member} a **${member.guild.name}**! 🍥`
+        ).catch(() => {});
+      }
+    }
+
+    await sendLog(
+      member.guild,
+      logEmbed(
+        "👋 Usuario entró",
+        `${member.user.tag} entró al servidor.`
+      )
     );
   }
 );
 
 client.on(
-  Events.Warn,
-  warning => {
-    console.warn(
-      "⚠️ Discord Warning:",
-      warning
+  Events.GuildMemberRemove,
+  async member => {
+    await sendLog(
+      member.guild,
+      logEmbed(
+        "🚪 Usuario salió",
+        `${member.user.tag} salió del servidor.`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 📝 MENSAJES BORRADOS
+// ============================================================
+
+client.on(
+  Events.MessageDelete,
+  async message => {
+
+    if (!message.guild) return;
+
+    if (message.author?.bot) return;
+
+    const content =
+      message.content || "Contenido no disponible";
+
+    await sendLog(
+      message.guild,
+      logEmbed(
+        "🗑️ Mensaje borrado",
+        `👤 Autor: ${message.author || "Desconocido"}\n` +
+        `📁 Canal: ${message.channel}\n` +
+        `💬 Contenido:\n> ${content.slice(0, 1500)}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// ✏️ MENSAJES EDITADOS
+// ============================================================
+
+client.on(
+  Events.MessageUpdate,
+  async (oldMessage, newMessage) => {
+
+    if (!newMessage.guild) return;
+    if (newMessage.author?.bot) return;
+
+    if (
+      oldMessage.content ===
+      newMessage.content
+    ) {
+      return;
+    }
+
+    await sendLog(
+      newMessage.guild,
+      logEmbed(
+        "✏️ Mensaje editado",
+        `👤 Autor: ${newMessage.author}\n` +
+        `📁 Canal: ${newMessage.channel}\n\n` +
+        `🔴 Antes:\n> ${(oldMessage.content || "No disponible").slice(0, 700)}\n\n` +
+        `🟢 Después:\n> ${(newMessage.content || "No disponible").slice(0, 700)}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 🎭 ROLES CREADOS
+// ============================================================
+
+client.on(
+  Events.RoleCreate,
+  async role => {
+
+    await handleStructureProtection(
+      role.guild,
+      AuditLogEvent.RoleCreate,
+      role.id,
+      `🎭 Rol creado: **${role.name}**`
+    );
+
+    await sendLog(
+      role.guild,
+      logEmbed(
+        "🎭 Rol creado",
+        `Rol: ${role}\n🆔 ${role.id}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 🗑️ ROLES ELIMINADOS
+// ============================================================
+
+client.on(
+  Events.RoleDelete,
+  async role => {
+
+    await handleStructureProtection(
+      role.guild,
+      AuditLogEvent.RoleDelete,
+      role.id,
+      `🗑️ Rol eliminado: **${role.name}**`
+    );
+
+    await sendLog(
+      role.guild,
+      logEmbed(
+        "🗑️ Rol eliminado",
+        `Rol: **${role.name}**\n🆔 ${role.id}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 📁 CANALES CREADOS
+// ============================================================
+
+client.on(
+  Events.ChannelCreate,
+  async channel => {
+
+    if (!channel.guild) return;
+
+    await handleStructureProtection(
+      channel.guild,
+      AuditLogEvent.ChannelCreate,
+      channel.id,
+      `📁 Canal creado: **${channel.name}**`
+    );
+
+    await sendLog(
+      channel.guild,
+      logEmbed(
+        "📁 Canal creado",
+        `Canal: ${channel}\n🆔 ${channel.id}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 🗑️ CANALES ELIMINADOS
+// ============================================================
+
+client.on(
+  Events.ChannelDelete,
+  async channel => {
+
+    if (!channel.guild) return;
+
+    await handleStructureProtection(
+      channel.guild,
+      AuditLogEvent.ChannelDelete,
+      channel.id,
+      `🗑️ Canal eliminado: **${channel.name}**`
+    );
+
+    await sendLog(
+      channel.guild,
+      logEmbed(
+        "🗑️ Canal eliminado",
+        `Canal: **${channel.name}**\n🆔 ${channel.id}`
+      )
+    );
+  }
+);
+
+// ============================================================
+// 💬 MENSAJES / COMANDOS
+// ============================================================
+
+client.on(
+  Events.MessageCreate,
+  async message => {
+
+    if (!message.guild) return;
+    if (message.author.bot) return;
+
+    const guildData =
+      getGuild(message.guild.id);
+
+    // ========================================================
+    // 🔗 ANTILINK
+    // ========================================================
+
+    if (
+      guildData.antilink.enabled &&
+      !isAdmin(message.member) &&
+      containsLink(message.content) &&
+      !isWhitelistedLink(
+        message.content,
+        guildData.antilink.whitelist
+      )
+    ) {
+      await message.delete()
+        .catch(() => {});
+
+      await message.member
+        .timeout(
+          guildData.antilink.timeout,
+          "🔗 Naruto AntiLink"
+        )
+        .catch(() => {});
+
+      await sendLog(
+        message.guild,
+        logEmbed(
+          "🔗 AntiLink",
+          `${message.author} envió un enlace y fue sancionado.`
+        )
+      );
+
+      return;
+    }
+
+    // ========================================================
+    // ⭐ XP
+    // ========================================================
+
+    await addXP(
+      message.member,
+      5
+    );
+
+    // ========================================================
+    // 📌 PREFIJO
+    // ========================================================
+
+    if (
+      !message.content
+        .toLowerCase()
+        .startsWith(PREFIX.toLowerCase())
+    ) {
+      return;
+    }
+
+    const raw =
+      message.content.slice(
+        PREFIX.length
+      ).trim();
+
+    if (!raw) return;
+
+    const parts =
+      raw.split(/\s+/);
+
+    const command =
+      parts.shift().toLowerCase();
+
+    const args =
+      parts;
+
+    // ========================================================
+    // 📚 HELP
+    // ========================================================
+
+    if (command === "help") {
+      return showHelp(message);
+    }
+
+    if (command === "helpadmin") {
+      return showAdminHelp(message);
+    }
+
+    // ========================================================
+    // 💰 ECONOMÍA
+    // ========================================================
+
+    const economyCommands =
+      categories.economy.commands;
+
+    if (
+      economyCommands.includes(command)
+    ) {
+      return economyCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🛡️ MODERACIÓN
+    // ========================================================
+
+    if (
+      categories.moderation.commands
+        .includes(command)
+    ) {
+      return moderationCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🛒 SHOP
+    // ========================================================
+
+    if (
+      categories.shop.commands
+        .includes(command)
+    ) {
+      return shopCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🏆 RANK
+    // ========================================================
+
+    if (
+      categories.rank.commands
+        .includes(command)
+    ) {
+      return rankCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 👤 SOCIAL
+    // ========================================================
+
+    if (
+      categories.social.commands
+        .includes(command)
+    ) {
+      return socialCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🎮 DIVERSIÓN
+    // ========================================================
+
+    if (
+      categories.fun.commands
+        .includes(command)
+    ) {
+      return funCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🏠 SERVIDOR
+    // ========================================================
+
+    if (
+      categories.server.commands
+        .includes(command)
+    ) {
+      return serverCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🔐 SEGURIDAD
+    // ========================================================
+
+    if (
+      categories.security.commands
+        .includes(command)
+    ) {
+      return securityCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // ⚙️ CONFIGURACIÓN
+    // ========================================================
+
+    if (
+      categories.config.commands
+        .includes(command)
+    ) {
+      return configCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // 🎭 ROLES
+    // ========================================================
+
+    if (
+      categories.roles.commands
+        .includes(command)
+    ) {
+      return rolesCommand(
+        message,
+        command,
+        args
+      );
+    }
+
+    // ========================================================
+    // ❓ COMANDO DESCONOCIDO
+    // ========================================================
+
+    return safeReply(
+      message,
+      `❌ Comando desconocido. Usa \`${PREFIX}help\` para ver los comandos.`
+    );
+  }
+);
+
+// ============================================================
+// 🟢 READY
+// ============================================================
+
+client.once(
+  Events.ClientReady,
+  readyClient => {
+
+    console.log(
+      `🍥 Naruto conectado como ${readyClient.user.tag}`
+    );
+
+    readyClient.user.setPresence({
+      activities: [
+        {
+          name: `${PREFIX}help | Naruto`,
+          type: 0
+        }
+      ],
+      status: "online"
+    });
+  }
+);
+
+// ============================================================
+// ❌ ERRORES
+// ============================================================
+
+process.on(
+  "unhandledRejection",
+  error => {
+    console.error(
+      "❌ Unhandled Rejection:",
+      error
+    );
+  }
+);
+
+process.on(
+  "uncaughtException",
+  error => {
+    console.error(
+      "❌ Uncaught Exception:",
+      error
     );
   }
 );
@@ -3538,13 +4774,10 @@ client.on(
 // 🔑 LOGIN
 // ============================================================
 
-if (
-  !process.env.DISCORD_TOKEN
-) {
+if (!process.env.DISCORD_TOKEN) {
   console.error(
-    "❌ No existe DISCORD_TOKEN en Render."
+    "❌ Falta la variable DISCORD_TOKEN en Render."
   );
-
   process.exit(1);
 }
 
